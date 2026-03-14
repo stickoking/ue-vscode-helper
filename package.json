@@ -1,46 +1,62 @@
 {
   "name": "ue-vscode-helper",
-  "displayName": "ue-vscode-helper",
-  "description": "Helps Unreal Engine devs fix IntelliSense, speed up VS Code, and init Git",
-  "version": "0.0.1",
+  "displayName": "Unreal Engine VS Code Helper",
+  "description": "Fixes IntelliSense, excludes heavy folders, and init Git for Unreal Engine projects",
+  "version": "0.1.0",
+  "publisher": "stickoking",
   "engines": {
-    "vscode": "^1.110.0"
+    "vscode": "^1.85.0"
   },
-  "categories": [
-    "Other"
+  "categories": ["Other", "Programming Languages"],
+  "activationEvents": [
+    "onCommand:ue-vscode-helper.setup",
+    "onCommand:ue-vscode-helper.initGit",
+    "workspaceContains:*.uproject"
   ],
-  "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "ue-vscode-helper.helloWorld",
-        "title": "Hello World"
+        "command": "ue-vscode-helper.setup",
+        "title": "Unreal: Setup VS Code (IntelliSense + Excludes)",
+        "category": "Unreal Engine"
+      },
+      {
+        "command": "ue-vscode-helper.initGit",
+        "title": "Unreal: Init Git + .gitignore",
+        "category": "Unreal Engine"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "UE VS Code Helper",
+      "properties": {
+        "ue-vscode-helper.enginePath": {
+          "type": "string",
+          "default": "C:\\Program Files\\Epic Games\\UE_5.4",
+          "description": "Path to your Unreal Engine installation (change if you use 5.5/5.6 etc.)"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "lint": "eslint src",
+    "lint": "eslint src --ext ts",
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.110.0",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "typescript-eslint": "^8.56.1",
-    "eslint": "^9.39.3",
-    "typescript": "^5.9.3",
-    "ts-loader": "^9.5.4",
-    "webpack": "^5.105.3",
-    "webpack-cli": "^6.0.1",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
-  }
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.2",
+    "ts-loader": "^9.5.1",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4",
+    "@vscode/test-cli": "^0.0.4",
+    "@vscode/test-electron": "^2.3.9"
+  },
+  "dependencies": {}
 }
