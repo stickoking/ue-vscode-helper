@@ -1,71 +1,52 @@
-# ue-vscode-helper README
+# Unreal Engine VS Code Helper
 
-This is the README for your extension "ue-vscode-helper". After writing up a brief description, we recommend including the following sections.
+**One-click IntelliSense fix + massive performance boost + smart Git init for Unreal Engine 5 projects.**
+
+Tired of red squiggles, slow VS Code, and messy project files after generating Visual Studio Code files in the Unreal Editor?  
+This extension fixes it all in one click.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+- **IntelliSense Fix** — Automatically patches `c_cpp_properties.json` with correct compileCommands, forced includes, and proper paths  
+- **Performance Boost** — Adds smart excludes for `files.watcherExclude`, `files.exclude`, `C_Cpp.files.exclude`, and `search.exclude` (stops VS Code from scanning the entire Engine folder)  
+- **Git Init (optional)** — One-click Git repository setup with a battle-tested Unreal `.gitignore`, initial commit, and optional GitHub remote  
+- Works with UE 5.4+ (easily configurable for any version)
 
-For example if there is an image subfolder under your extension project workspace:
+## How to Use
 
-\!\[feature X\]\(images/feature-x.png\)
+1. Open your Unreal Engine project folder in VS Code  
+2. Press `Ctrl+Shift+P` and run one of these commands:
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+   - **Unreal: Setup VS Code (IntelliSense + Excludes)** ← Run this after "Generate Visual Studio Code Project Files" in the Unreal Editor  
+   - **Unreal: Init Git + .gitignore** ← Sets up Git safely (skips if already initialized)
 
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+3. Press `Ctrl+R` (Reload Window) once to apply changes
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+- `ue-vscode-helper.enginePath`  
+  Default: `C:\Program Files\Epic Games\UE_5.4`  
+  Change this if you use a different UE version (e.g. UE_5.5, UE_5.6, etc.)
 
-For example:
+## Requirements
 
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+- Unreal Engine 5.4 or newer  
+- "Generate Visual Studio Code Project Files" already run in the Unreal Editor  
+- Git installed (only needed for the Git init command)
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- The Definitions.*.h file must exist (run your project once in the Editor after generating project files)  
+- Works best on Windows
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+### 1.0.0 (March 2026)
+- Full IntelliSense + excludes patching  
+- Added strong Git init guards with confirmation dialogs  
+- Clean native TypeScript implementation
 
 ---
 
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+Made with ❤️ for the Unreal community.  
+Feedback / issues welcome on GitHub!

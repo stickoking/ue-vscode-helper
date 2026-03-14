@@ -4,10 +4,17 @@
   "description": "Fixes IntelliSense, excludes heavy folders, and init Git for Unreal Engine projects",
   "version": "0.1.0",
   "publisher": "stickoking",
+  "repository": {
+        "type": "git",
+        "url": "https://github.com/stickoking/ue-vscode-helper.git"
+    },
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other", "Programming Languages"],
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
   "activationEvents": [
     "onCommand:ue-vscode-helper.setup",
     "onCommand:ue-vscode-helper.initGit",
@@ -50,13 +57,14 @@
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.56.0",
-    "typescript": "^5.3.2",
-    "ts-loader": "^9.5.1",
-    "webpack": "^5.88.2",
-    "webpack-cli": "^5.1.4",
     "@vscode/test-cli": "^0.0.4",
-    "@vscode/test-electron": "^2.3.9"
-  },
-  "dependencies": {}
+    "@vscode/test-electron": "^2.3.9",
+    "ajv": "^8.18.0",
+    "ajv-keywords": "^5.1.0",
+    "eslint": "^8.56.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.2",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
+  }
 }
