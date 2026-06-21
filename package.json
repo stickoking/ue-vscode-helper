@@ -2,12 +2,12 @@
   "name": "ue-vscode-helper",
   "displayName": "Unreal Engine VS Code Helper",
   "description": "Fixes IntelliSense, excludes heavy folders, and init Git for Unreal Engine projects",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "stickoking",
   "repository": {
-        "type": "git",
-        "url": "https://github.com/stickoking/ue-vscode-helper.git"
-    },
+    "type": "git",
+    "url": "https://github.com/stickoking/ue-vscode-helper.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -54,6 +54,8 @@
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^26.0.0",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
