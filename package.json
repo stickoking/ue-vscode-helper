@@ -2,7 +2,7 @@
   "name": "ue-vscode-helper",
   "displayName": "Unreal Engine VS Code Helper",
   "description": "Fixes IntelliSense, excludes heavy folders, and init Git for Unreal Engine projects",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "stickoking",
   "repository": {
     "type": "git",
