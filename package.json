@@ -1,8 +1,8 @@
 {
   "name": "ue-vscode-helper",
-  "displayName": "Unreal Engine VS Code Helper",
-  "description": "Fixes IntelliSense, excludes heavy folders, and init Git for Unreal Engine projects",
-  "version": "0.1.2",
+  "displayName": "Unreal Engine VS Code / Cursor Helper",
+  "description": "Dual-host Unreal IntelliSense setup for VS Code (Microsoft C++) and Cursor (clangd + slim BuildRules IntelliSense), plus excludes and Git init",
+  "version": "0.2.7",
   "publisher": "stickoking",
   "repository": {
     "type": "git",
@@ -25,7 +25,7 @@
     "commands": [
       {
         "command": "ue-vscode-helper.setup",
-        "title": "Unreal: Setup VS Code (IntelliSense + Excludes)",
+        "title": "Unreal: Setup IntelliSense + Excludes",
         "category": "Unreal Engine"
       },
       {
@@ -35,12 +35,27 @@
       }
     ],
     "configuration": {
-      "title": "UE VS Code Helper",
+      "title": "UE VS Code / Cursor Helper",
       "properties": {
         "ue-vscode-helper.enginePath": {
           "type": "string",
           "default": "C:\\Program Files\\Epic Games\\UE_5.4",
-          "description": "Path to your Unreal Engine installation (change if you use 5.5/5.6 etc.)"
+          "description": "Fallback path to your Unreal Engine installation when EngineAssociation cannot be resolved from the .uproject"
+        },
+        "ue-vscode-helper.preferHost": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "cursor",
+            "vscode"
+          ],
+          "default": "auto",
+          "description": "Which IntelliSense profile to apply. auto detects Cursor vs VS Code from the app name."
+        },
+        "ue-vscode-helper.restoreModuleRules": {
+          "type": "boolean",
+          "default": true,
+          "description": "On Cursor setup, run UE-bundled `dotnet restore` on the slim `.vscode/<Project>.BuildRules.IntelliSense.csproj` (wrapped by a sibling .sln as dotnet.defaultSolution — not the full Intermediate ModuleRules). Timeout 90s; non-fatal. Avoids indexing thousands of Engine Build.cs via UE5Rules."
         }
       }
     }
@@ -50,6 +65,7 @@
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
+    "vsix": "npx --yes @vscode/vsce package",
     "lint": "eslint src --ext ts",
     "test": "vscode-test"
   },
