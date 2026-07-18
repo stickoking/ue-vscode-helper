@@ -1,8 +1,27 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { fileExists } from './util';
+
+function runGit(args: string[], cwd: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        execFile('git', args, { cwd }, (err) => (err ? reject(err) : resolve()));
+    });
+}
+
+/** Accept https/ssh git remotes; reject shell metacharacters even though we use execFile. */
+function isSafeGitRemoteUrl(url: string): boolean {
+    const trimmed = url.trim();
+    if (!trimmed || /[\r\n\0]/.test(trimmed)) {
+        return false;
+    }
+    return (
+        /^https:\/\/[^\s]+$/i.test(trimmed) ||
+        /^git@[^\s]+:[^\s]+$/i.test(trimmed) ||
+        /^ssh:\/\/[^\s]+$/i.test(trimmed)
+    );
+}
 
 export async function initGitProject(): Promise<void> {
     const workspace = vscode.workspace.workspaceFolders?.[0];
@@ -18,9 +37,7 @@ export async function initGitProject(): Promise<void> {
     }
 
     try {
-        await new Promise<void>((resolve, reject) => {
-            exec('git --version', (err) => (err ? reject(err) : resolve()));
-        });
+        await runGit(['--version'], projectPath);
     } catch {
         return void vscode.window.showErrorMessage(
             'Git is not installed or not in PATH. Install it from https://git-scm.com'
@@ -38,9 +55,7 @@ export async function initGitProject(): Promise<void> {
     }
 
     try {
-        await new Promise<void>((resolve, reject) => {
-            exec('git init', { cwd: projectPath }, (err) => (err ? reject(err) : resolve()));
-        });
+        await runGit(['init'], projectPath);
         vscode.window.showInformationMessage('Git repo initialised.');
 
         const gitignoreContent = `# Unreal Engine generated folders
@@ -93,16 +108,11 @@ Crash/
 `;
         await fs.writeFile(path.join(projectPath, '.gitignore'), gitignoreContent, 'utf8');
 
-        await new Promise<void>((resolve, reject) => {
-            exec('git add .', { cwd: projectPath }, (err) => (err ? reject(err) : resolve()));
-        });
-        await new Promise<void>((resolve, reject) => {
-            exec(
-                'git commit -m "Initial commit — Unreal project + editor config"',
-                { cwd: projectPath },
-                (err) => (err ? reject(err) : resolve())
-            );
-        });
+        await runGit(['add', '.'], projectPath);
+        await runGit(
+            ['commit', '-m', 'Initial commit — Unreal project + editor config'],
+            projectPath
+        );
 
         vscode.window.showInformationMessage('✅ Initial commit created!');
 
@@ -113,11 +123,14 @@ Crash/
                 placeHolder: 'https://github.com/yourusername/MyGame.git',
             });
             if (remoteUrl) {
-                await new Promise<void>((resolve, reject) => {
-                    exec(`git remote add origin ${remoteUrl}`, { cwd: projectPath }, (err) =>
-                        err ? reject(err) : resolve()
+                const trimmed = remoteUrl.trim();
+                if (!isSafeGitRemoteUrl(trimmed)) {
+                    return void vscode.window.showErrorMessage(
+                        'Invalid remote URL. Use https://…, git@host:path, or ssh://… with no spaces.'
                     );
-                });
+                }
+                // execFile + argv — never interpolate the URL into a shell string.
+                await runGit(['remote', 'add', 'origin', trimmed], projectPath);
                 vscode.window.showInformationMessage(
                     `Remote 'origin' added! Run 'git push -u origin main' when ready.`
                 );

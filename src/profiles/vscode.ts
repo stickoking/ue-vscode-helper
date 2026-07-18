@@ -75,12 +75,16 @@ export async function patchCppProperties(info: ProjectInfo): Promise<void> {
 
 /**
  * VS Code profile settings: keep Microsoft C++ as default; do not force clangd.on.
- * If Unreal left clangd.enable: false, leave it; if somehow true, turn it off so it
- * does not fight Microsoft C++.
+ * Explicitly re-enable C_Cpp after a prior Cursor setup (which sets them to disabled);
+ * otherwise deep-merge would leave Microsoft IntelliSense off.
  */
 export function buildVsCodeSettings(): Record<string, any> {
     return {
         'clangd.enable': false,
+        'C_Cpp.intelliSenseEngine': 'default',
+        'C_Cpp.autocomplete': 'default',
+        'C_Cpp.errorSquiggles': 'enabled',
+        'C_Cpp.formatting': 'default',
     };
 }
 

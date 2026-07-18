@@ -69,6 +69,17 @@ export async function buildCursorSettings(info: ProjectInfo): Promise<Record<str
             DOTNET_MULTILEVEL_LOOKUP: '0',
             DOTNET_ROLL_FORWARD: 'LatestMajor',
         };
+    } else {
+        // Clear stale paths from a prior Setup if the engine/DotNet folder moved or vanished.
+        // undefined → mergeSettings deletes the key (nested keys only for terminal env).
+        settings['dotnet.dotnetPath'] = undefined;
+        settings['terminal.integrated.env.windows'] = {
+            PATH: undefined,
+            DOTNET_ROOT: undefined,
+            DOTNET_HOST_PATH: undefined,
+            DOTNET_MULTILEVEL_LOOKUP: undefined,
+            DOTNET_ROLL_FORWARD: undefined,
+        };
     }
 
     return settings;
@@ -478,8 +489,18 @@ export async function applyCursorProfile(info: ProjectInfo): Promise<{
     await writeClangdConfig(info.projectPath);
 
     try {
-        const { rulesCount } = await writeBuildRulesIntelliSenseCsproj(info);
-        await writeBuildRulesIntelliSenseSln(info);
+        const { rulesCount, csprojPath } = await writeBuildRulesIntelliSenseCsproj(info);
+        try {
+            await writeBuildRulesIntelliSenseSln(info);
+        } catch (slnErr: unknown) {
+            // Avoid orphan csproj without a sibling .sln (C# LS / defaultSolution half-state).
+            try {
+                await fs.unlink(csprojPath);
+            } catch {
+                // ignore — still report the sln failure
+            }
+            throw slnErr;
+        }
         settings['dotnet.defaultSolution'] = buildRulesIntelliSenseSlnRelative(info.projectName);
         notes.push(
             `Slim BuildRules IntelliSense csproj+sln written (${rulesCount} rules file(s); no UE5Rules). ` +

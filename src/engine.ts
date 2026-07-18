@@ -13,18 +13,27 @@ export interface ProjectInfo {
 }
 
 export async function findProjectInfo(): Promise<ProjectInfo | undefined> {
-    const workspace = vscode.workspace.workspaceFolders?.[0];
-    if (!workspace) {
+    if (!vscode.workspace.workspaceFolders?.length) {
         return undefined;
     }
 
-    const projectPath = workspace.uri.fsPath;
     const uprojectFiles = await vscode.workspace.findFiles('**/*.uproject', '**/node_modules/**', 1);
     if (uprojectFiles.length === 0) {
         return undefined;
     }
 
     const uprojectPath = uprojectFiles[0].fsPath;
+    // Prefer the folder that contains the .uproject (multi-root safe) — not always folders[0].
+    // Unreal projects keep .uproject at the project root, so dirname is the game root.
+    const containing = vscode.workspace.workspaceFolders.find((f) => {
+        const root = f.uri.fsPath.replace(/[/\\]+$/, '');
+        return (
+            uprojectPath === root ||
+            uprojectPath.startsWith(root + path.sep) ||
+            uprojectPath.startsWith(root + '/')
+        );
+    });
+    const projectPath = containing?.uri.fsPath ?? path.dirname(uprojectPath);
     const projectName = path.basename(uprojectPath, '.uproject');
     const enginePath = await resolveEnginePath(uprojectPath);
 

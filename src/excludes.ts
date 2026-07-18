@@ -9,6 +9,67 @@ export interface ExcludeMaps {
     searchExclude: Record<string, boolean>;
 }
 
+/** Workspace setting keys whose values are exclude path→bool maps. */
+export const EXCLUDE_SETTING_KEYS = [
+    'files.watcherExclude',
+    'files.exclude',
+    'C_Cpp.files.exclude',
+    'search.exclude',
+] as const;
+
+/**
+ * Absolute path exclude keys (engine trees under Epic Games / drive letters).
+ * Relative globs (e.g. star-star/Binaries/star-star) are preserved across Setup.
+ */
+export function isAbsoluteExcludeKey(key: string): boolean {
+    return /^[A-Za-z]:\//.test(key) || (key.startsWith('/') && !key.startsWith('**/'));
+}
+
+/**
+ * Merge one exclude map: drop stale absolute engine-path keys from existing,
+ * keep relative/user globs, then apply the incoming map (current engine).
+ */
+export function mergeExcludeMap(
+    existing: Record<string, boolean> | undefined,
+    incoming: Record<string, boolean>
+): Record<string, boolean> {
+    const result: Record<string, boolean> = {};
+    if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+        for (const [k, v] of Object.entries(existing)) {
+            if (!isAbsoluteExcludeKey(k)) {
+                result[k] = v;
+            }
+        }
+    }
+    Object.assign(result, incoming);
+    return result;
+}
+
+/**
+ * mergeSettings, then re-merge exclude maps so a changed enginePath does not
+ * leave watchers/search pointed at the previous UE install.
+ */
+export function mergeSettingsWithExcludes(
+    target: Record<string, any>,
+    source: Record<string, any>
+): Record<string, any> {
+    const merged = mergeSettings(target, source);
+    for (const key of EXCLUDE_SETTING_KEYS) {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) {
+            continue;
+        }
+        const incoming = source[key];
+        if (incoming === undefined) {
+            delete merged[key];
+            continue;
+        }
+        if (incoming && typeof incoming === 'object' && !Array.isArray(incoming)) {
+            merged[key] = mergeExcludeMap(target[key], incoming);
+        }
+    }
+    return merged;
+}
+
 export function buildExcludeMaps(enginePath: string): ExcludeMaps {
     const engineNormalized = normalizeSlashes(enginePath);
 
@@ -92,7 +153,7 @@ export async function patchCodeWorkspace(
     if (!ws.settings) {
         ws.settings = {};
     }
-    ws.settings = mergeSettings(ws.settings, settingsPatch);
+    ws.settings = mergeSettingsWithExcludes(ws.settings, settingsPatch);
     await writeJson(workspaceFile, ws);
     return { workspaceFile, patched: true };
 }
@@ -115,6 +176,6 @@ export async function patchVscodeSettings(
         }
     }
 
-    const merged = mergeSettings(existing, settingsPatch);
+    const merged = mergeSettingsWithExcludes(existing, settingsPatch);
     await writeJson(settingsFile, merged);
 }

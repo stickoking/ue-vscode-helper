@@ -2,6 +2,16 @@
 
 All notable changes to the "ue-vscode-helper" extension will be documented in this file.
 
+## [1.1.2] - 2026-07-18
+
+### Fixed
+- Exclude maps no longer keep stale absolute engine-path keys after `enginePath` / `EngineAssociation` changes (relative user globs preserved)
+- VS Code profile re-enables Microsoft `C_Cpp.*` after a prior Cursor setup (no longer leaves IntelliSense disabled)
+- Slim BuildRules: if `.sln` write fails after `.csproj`, delete the orphan csproj and clear `dotnet.defaultSolution`
+- Clear stale `dotnet.dotnetPath` / terminal `DOTNET_*` env when UE-bundled DotNet is missing
+- Git remote add uses `execFile` argv (no shell interpolation) + URL shape validation
+- `findProjectInfo` uses the workspace folder that contains the `.uproject` (multi-root safe)
+
 ## [1.1.1] - 2026-07-18
 
 ### Fixed
