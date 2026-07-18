@@ -268,17 +268,26 @@ async function setupUnrealProject(context: vscode.ExtensionContext) {
                 const hard = await runHardSetupPhase(info, host);
                 notes.push(...hard.notes);
 
-                // SOFT phase — never throws into Setup failure / never rolls back hard path.
+                // Soft phase AFTER hard commit: notes only — never fail Setup / never rollback.
+                // Family: getHelperSetting throw in restore (or any soft error) must not
+                // set succeeded=false (PR: Restore step fails after hard commit).
+                // Do NOT soft-catch inside restoreBuildRulesIntelliSense (undone bounce).
                 if (host === 'cursor') {
-                    progress.report({ message: 'Writing clangd & compile_commands...' });
-                    notes.push(...(await writeCursorSecondaryArtifacts(info)));
+                    try {
+                        progress.report({ message: 'Writing clangd & compile_commands...' });
+                        notes.push(...(await writeCursorSecondaryArtifacts(info)));
 
-                    progress.report({
-                        message: 'Restoring BuildRules IntelliSense (slim csproj)...',
-                    });
-                    const restoreNote = await restoreBuildRulesIntelliSense(info);
-                    if (restoreNote) {
-                        notes.push(restoreNote);
+                        progress.report({
+                            message: 'Restoring BuildRules IntelliSense (slim csproj)...',
+                        });
+                        const restoreNote = await restoreBuildRulesIntelliSense(info);
+                        if (restoreNote) {
+                            notes.push(restoreNote);
+                        }
+                    } catch (err: unknown) {
+                        notes.push(
+                            `Warning: soft phase after hard Setup — ${(err as Error).message}`
+                        );
                     }
                 }
 

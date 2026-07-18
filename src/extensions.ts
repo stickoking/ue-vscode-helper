@@ -101,18 +101,40 @@ export function hostRecommendations(host: HostKind, promptPython: boolean): stri
     return ids;
 }
 
-async function installExtension(id: string): Promise<boolean> {
+type InstallOutcome = 'visible' | 'pending' | 'failed';
+
+async function installExtension(entry: ExtensionEntry): Promise<InstallOutcome> {
+    const id = entry.id;
+    const visibleIds = entry.satisfiedBy ?? [id];
     try {
         await vscode.commands.executeCommand('workbench.extensions.installExtension', id);
-        return true;
+        // Command often resolves before the extension host exposes getExtension —
+        // poll until any satisfying id is visible (or timeout).
+        if (await waitUntilAnyExtensionVisible(visibleIds, 45_000)) {
+            return 'visible';
+        }
+        // Install command succeeded but host has not exposed a satisfying id yet.
+        return 'pending';
     } catch {
         try {
             await vscode.commands.executeCommand('workbench.extensions.search', `@id:${id}`);
         } catch {
             // ignore — soft prompt only
         }
-        return false;
+        return 'failed';
     }
+}
+
+/** Poll until any of the ids is visible via getExtension. */
+async function waitUntilAnyExtensionVisible(ids: string[], timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (ids.some(isInstalled)) {
+            return true;
+        }
+        await new Promise((r) => setTimeout(r, 400));
+    }
+    return ids.some(isInstalled);
 }
 
 /**
@@ -155,11 +177,14 @@ export async function ensureExtensions(
     }
 
     const installed: string[] = [];
+    const pending: string[] = [];
     const opened: string[] = [];
     for (const entry of missing) {
-        const ok = await installExtension(entry.id);
-        if (ok) {
+        const outcome = await installExtension(entry);
+        if (outcome === 'visible') {
             installed.push(entry.label);
+        } else if (outcome === 'pending') {
+            pending.push(entry.label);
         } else {
             opened.push(entry.label);
         }
@@ -168,6 +193,11 @@ export async function ensureExtensions(
     const parts: string[] = [];
     if (installed.length > 0) {
         parts.push(`Installed: ${installed.join(', ')}`);
+    }
+    if (pending.length > 0) {
+        parts.push(
+            `Install started (Reload may be needed before detected): ${pending.join(', ')}`
+        );
     }
     if (opened.length > 0) {
         parts.push(`Opened marketplace search for: ${opened.join(', ')}`);

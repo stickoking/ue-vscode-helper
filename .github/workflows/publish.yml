@@ -54,16 +54,35 @@ jobs:
         run: npx --yes @vscode/vsce package --out ue-vscode-helper.vsix
 
       - name: Publish to Open VSX (Cursor)
+        id: publish_open_vsx
         if: ${{ github.event_name == 'push' || inputs.publish_open_vsx }}
+        continue-on-error: true
         uses: HaaLeo/publish-vscode-extension@v2
         with:
           pat: ${{ secrets.OPEN_VSX_TOKEN }}
           extensionFile: ue-vscode-helper.vsix
 
       - name: Publish to Visual Studio Marketplace (VS Code)
+        id: publish_marketplace
         if: ${{ github.event_name == 'push' || inputs.publish_vs_marketplace }}
+        continue-on-error: true
         uses: HaaLeo/publish-vscode-extension@v2
         with:
           pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
           registryUrl: https://marketplace.visualstudio.com
           extensionFile: ue-vscode-helper.vsix
+
+      # Both registries get a chance even if the other fails (PR: Open VSX failure blocks Marketplace).
+      - name: Fail if any attempted publish failed
+        if: always()
+        run: |
+          failed=0
+          if [ "${{ steps.publish_open_vsx.outcome }}" = "failure" ]; then
+            echo "::error::Open VSX publish failed"
+            failed=1
+          fi
+          if [ "${{ steps.publish_marketplace.outcome }}" = "failure" ]; then
+            echo "::error::Visual Studio Marketplace publish failed"
+            failed=1
+          fi
+          exit "$failed"

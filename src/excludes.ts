@@ -241,10 +241,19 @@ export async function patchVscodeSettings(
     const settingsFile = path.join(vscodeDir, 'settings.json');
     let existing: Record<string, any> = {};
     if (await fileExists(settingsFile)) {
+        // Family: never silent-empty on parse fail (e7e27dc wipe). Throw so hard-phase
+        // transaction rolls back — matches preflight / Setup-before-JSON strictness.
         try {
             existing = await readJsonc(settingsFile);
-        } catch {
-            existing = {};
+        } catch (err: unknown) {
+            throw new Error(
+                `Invalid JSON in .vscode/settings.json — fix it before Setup. ${(err as Error).message}`
+            );
+        }
+        if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+            throw new Error(
+                'Invalid JSON in .vscode/settings.json — root must be a JSON object. Fix it before Setup.'
+            );
         }
     }
 

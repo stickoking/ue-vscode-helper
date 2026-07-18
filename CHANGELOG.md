@@ -20,6 +20,10 @@ Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3
 - Setup validates workspace / `.vscode/settings.json` JSONC **before** `getHelperSetting` / ensure-extensions; invalid project settings throw (no silent fallback)
 - BuildRules `dotnet restore` on timeout: sync process-tree kill, then wait for child exit (or short grace) before reporting timeout; once kill was requested, result is always timeout (never success-after-kill flip-flop)
 - Git init skips engine/helper settings resolve (`resolveEngine: false`) so invalid settings JSONC cannot block init
+- Hard-phase `patchVscodeSettings` no longer replaces a corrupt settings file with `{}` — parse failure throws and rolls back with the hard transaction (settings JSONC family)
+- Soft phase after hard commit is isolated: restore/`getHelperSetting` (or other soft errors) become warnings; Setup still succeeds and offers Reload (soft-phase family — not soft-catch inside `restoreBuildRulesIntelliSense`)
+- Extension install waits until `getExtension` sees a satisfying id (`satisfiedBy` aware); outcomes are visible / pending (Reload may be needed) / failed (marketplace search) — no false “opened search” after a successful install command
+- Publish workflow: Open VSX and Marketplace both run even if the other fails (`continue-on-error`); job fails afterward if any attempted publish failed
 - Cursor `.clangd` no longer sets project-wide `Diagnostics.Suppress: ["*"]` — real C++ error squiggles show again; Engine PathMatch still fully suppressed
 - BuildRules IntelliSense `dotnet restore` no longer pipes undrained stdout (large NuGet output could fill the pipe and hang); stdout ignored, stderr drained for failure detail; 90s timeout + process-tree kill
 - VS Code Python checklist no longer treats Cursor-only `anysphere.cursorpyright` as satisfying Python; Cursor path still accepts cursorpyright **or** `ms-python.python`
@@ -52,7 +56,9 @@ Documented in `.cursor/rules/intentional-designs.mdc` so agents/Bugbot do not fl
 - **`ensureExtensions` vs workspace recommendations**: mode controls Install **prompts**; recommendations still list host optionals for discovery — different knobs.
 - **clangd Engine PathMatch** (`59f2807`): project diagnostics on; Engine PathMatch Suppress+Skip. Do not thrash PathMatch for Bugbot breadth complaints.
 - **Restore after kill**: once timeout kill is requested, outcome is timeout after wait — never “success if exit 0 after kill”.
+- **Soft phase after hard commit**: clangd / compile_commands / restore failures are notes only; Setup still succeeds (catch at soft call site in `extension.ts`, not inside restore’s `getHelperSetting`).
 - **No `c_cpp_properties` preflight** (`3372ae7`): soft-fail in hard phase only.
+
 ### Changed
 - Setup order locked: **extensions → config patch → single Reload Window**
 - Display name / description: Unreal Engine VS Code / Cursor Helper
