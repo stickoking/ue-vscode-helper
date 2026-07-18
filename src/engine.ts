@@ -82,6 +82,30 @@ async function resolveFromAssociation(association: string): Promise<string | und
     return undefined;
 }
 
+/**
+ * Compare DotNet version folder names numerically (semver-like).
+ * Lexicographic sort puts "10.0" before "9.0"; this puts 10.0 after 9.0.
+ */
+export function compareDotNetVersionFolders(a: string, b: string): number {
+    const pa = a.split('.').map((p) => {
+        const n = parseInt(p, 10);
+        return Number.isFinite(n) ? n : 0;
+    });
+    const pb = b.split('.').map((p) => {
+        const n = parseInt(p, 10);
+        return Number.isFinite(n) ? n : 0;
+    });
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+        const da = pa[i] ?? 0;
+        const db = pb[i] ?? 0;
+        if (da !== db) {
+            return da - db;
+        }
+    }
+    return 0;
+}
+
 /** Detect UE-bundled DotNet folder (version folder may differ across engines). */
 export async function findUeDotNetPath(enginePath: string): Promise<string | undefined> {
     const dotNetRoot = path.join(enginePath, 'Engine', 'Binaries', 'ThirdParty', 'DotNet');
@@ -89,14 +113,14 @@ export async function findUeDotNetPath(enginePath: string): Promise<string | und
         return undefined;
     }
 
-    // Prefer win-x64 under any version folder (e.g. 10.0/win-x64)
+    // Prefer win-x64 under the highest version folder (e.g. 10.0/win-x64 over 9.0)
     try {
         const entries = await fs.readdir(dotNetRoot, { withFileTypes: true });
         const versionDirs = entries
             .filter((e) => e.isDirectory())
             .map((e) => e.name)
-            .sort()
-            .reverse(); // newest first
+            .sort(compareDotNetVersionFolders)
+            .reverse(); // highest first
 
         for (const ver of versionDirs) {
             const winX64 = path.join(dotNetRoot, ver, 'win-x64');

@@ -40,7 +40,7 @@ const FILE_ASSOCIATIONS: Record<string, string> = {
 };
 
 export async function buildCursorSettings(info: ProjectInfo): Promise<Record<string, any>> {
-    const { projectName, enginePath } = info;
+    const { enginePath } = info;
     const settings: Record<string, any> = {
         'clangd.enable': true,
         'clangd.arguments': CLANGD_ARGS,
@@ -49,10 +49,8 @@ export async function buildCursorSettings(info: ProjectInfo): Promise<Record<str
         'C_Cpp.errorSquiggles': 'disabled',
         'C_Cpp.formatting': 'disabled',
         'files.associations': FILE_ASSOCIATIONS,
-        // Slim game-only .sln (wraps IntelliSense csproj) — NOT root ObstacleAssault.sln /
-        // Intermediate ModuleRules (those ProjectReference UE5Rules and hang the C# LS).
-        // Must be .sln: pointing defaultSolution at a .csproj is ignored; root *.sln wins.
-        'dotnet.defaultSolution': buildRulesIntelliSenseSlnRelative(projectName),
+        // dotnet.defaultSolution is set only after slim csproj+sln write succeeds
+        // (see applyCursorProfile) — never point C# LS at a missing solution.
         'dotnet.backgroundAnalysis.compilerDiagnosticsScope': 'openFiles',
         'dotnet.backgroundAnalysis.analyzerDiagnosticsScope': 'openFiles',
         'omnisharp.projectLoadTimeout': 120,
@@ -119,14 +117,12 @@ export async function writeClangdConfig(projectPath: string): Promise<void> {
 
 /**
  * Ensure root compile_commands.json exists for clangd (CompilationDatabase: .).
- * Prefer copying from .vscode/compileCommands_<Project>.json.
+ * Prefer `.vscode/compileCommands_<Project>.json`, then Default.
+ * Always overwrite root from the preferred source when present so Setup after UE
+ * project-file regen does not leave a stale root copy.
  */
 export async function ensureCompileCommands(projectPath: string, projectName: string): Promise<boolean> {
     const rootCc = path.join(projectPath, 'compile_commands.json');
-    if (await fileExists(rootCc)) {
-        return true;
-    }
-
     const vscodeDir = path.join(projectPath, '.vscode');
     const candidates = [
         path.join(vscodeDir, `compileCommands_${projectName}.json`),
@@ -140,7 +136,7 @@ export async function ensureCompileCommands(projectPath: string, projectName: st
         }
     }
 
-    return false;
+    return fileExists(rootCc);
 }
 
 async function walkRulesFiles(dir: string, results: string[]): Promise<void> {
@@ -189,21 +185,13 @@ export function buildDefaultDefineConstants(enginePath: string): string {
     for (let minor = 17; minor <= 30; minor++) {
         parts.push(`UE_4_${minor}_OR_LATER`);
     }
-    for (let minor = 0; minor <= 20; minor++) {
-        parts.push(`UE_5_${minor}_OR_LATER`);
-    }
 
+    // UE_5_N_OR_LATER through the detected engine minor (e.g. UE_5.8 → 0..8).
+    // If the path/version cannot be parsed, use a high cap so newer engines still work.
     const ver = parseEngineVersion(enginePath);
-    if (ver && ver.major === 5) {
-        // Trim to current minor so we don't claim futures; keep all up to current.
-        const filtered = parts.filter((p) => {
-            const m = p.match(/^UE_5_(\d+)_OR_LATER$/);
-            if (!m) {
-                return true;
-            }
-            return Number(m[1]) <= ver.minor;
-        });
-        return filtered.join(';');
+    const ue5MaxMinor = ver && ver.major === 5 ? ver.minor : 30;
+    for (let minor = 0; minor <= ue5MaxMinor; minor++) {
+        parts.push(`UE_5_${minor}_OR_LATER`);
     }
 
     return parts.join(';');
@@ -476,6 +464,9 @@ export async function restoreModuleRules(
  * Cursor profile files + settings object only.
  * Writes slim BuildRules IntelliSense csproj + .sln. Does NOT run restore or UI prompts —
  * those belong in the setup orchestrator so progress messages stay accurate.
+ *
+ * `dotnet.defaultSolution` is only merged after both csproj and sln write succeed.
+ * On failure it is omitted (and cleared if previously set) so C# LS is not pointed at a missing .sln.
  */
 export async function applyCursorProfile(info: ProjectInfo): Promise<{
     settings: Record<string, any>;
@@ -489,12 +480,19 @@ export async function applyCursorProfile(info: ProjectInfo): Promise<{
     try {
         const { rulesCount } = await writeBuildRulesIntelliSenseCsproj(info);
         await writeBuildRulesIntelliSenseSln(info);
+        settings['dotnet.defaultSolution'] = buildRulesIntelliSenseSlnRelative(info.projectName);
         notes.push(
             `Slim BuildRules IntelliSense csproj+sln written (${rulesCount} rules file(s); no UE5Rules). ` +
                 `dotnet.defaultSolution → ${buildRulesIntelliSenseSlnRelative(info.projectName)}`
         );
     } catch (err: unknown) {
-        notes.push(`Slim BuildRules IntelliSense csproj/sln failed: ${(err as Error).message}`);
+        // undefined → mergeSettings + JSON.stringify omit/clear any prior defaultSolution
+        settings['dotnet.defaultSolution'] = undefined;
+        notes.push(
+            `Warning: Slim BuildRules IntelliSense csproj/sln failed — ` +
+                `dotnet.defaultSolution was not set (C# LS would point at a missing solution). ` +
+                `${(err as Error).message}`
+        );
     }
 
     const hasCc = await ensureCompileCommands(info.projectPath, info.projectName);

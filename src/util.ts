@@ -21,11 +21,13 @@ export function normalizeSlashes(p: string): string {
     return p.replace(/\\/g, '/');
 }
 
-/** Deep-merge plain objects; arrays and primitives overwrite. */
+/** Deep-merge plain objects; arrays and primitives overwrite. `undefined` deletes the key. */
 export function mergeSettings(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
     const result = { ...target };
     for (const [key, value] of Object.entries(source)) {
-        if (
+        if (value === undefined) {
+            delete result[key];
+        } else if (
             value &&
             typeof value === 'object' &&
             !Array.isArray(value) &&

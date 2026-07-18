@@ -2,6 +2,14 @@
 
 All notable changes to the "ue-vscode-helper" extension will be documented in this file.
 
+## [1.1.1] - 2026-07-18
+
+### Fixed
+- Only set `dotnet.defaultSolution` after slim BuildRules csproj+sln write succeeds; on failure omit/clear it and warn (avoids C# LS pointing at a missing solution)
+- Always refresh root `compile_commands.json` from `.vscode/compileCommands_*` when the source exists (no longer early-return on a stale root file after UE regen)
+- Pick highest UE-bundled DotNet version folder with numeric (semver-like) sort so `10.0` wins over `9.0`
+- Generate `UE_5_N_OR_LATER` DefineConstants through the detected engine minor (e.g. `UE_5.8` → 0..8), not a hard cap at 20
+
 ## [1.1.0] - 2026-07-18
 
 Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3.x).
