@@ -108,10 +108,13 @@ export async function resolveUprojectPath(
 /**
  * @param uprojectPath Explicit path skips resolve (Setup already chose).
  * @param preferredPath Remembered path when resolving (Git init after Setup).
+ * @param options.resolveEngine When false (Git init), skip engine/helper settings —
+ *   Git only needs projectPath/uprojectPath so invalid settings JSONC cannot block init.
  */
 export async function findProjectInfo(
     uprojectPath?: string,
-    preferredPath?: string
+    preferredPath?: string,
+    options?: { resolveEngine?: boolean }
 ): Promise<FindProjectResult> {
     if (!vscode.workspace.workspaceFolders?.length) {
         return { status: 'none' };
@@ -131,7 +134,8 @@ export async function findProjectInfo(
 
     const projectPath = path.dirname(resolvedPath);
     const projectName = path.basename(resolvedPath, '.uproject');
-    const enginePath = await resolveEnginePath(resolvedPath);
+    const enginePath =
+        options?.resolveEngine === false ? '' : await resolveEnginePath(resolvedPath);
 
     return {
         status: 'found',

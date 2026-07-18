@@ -39,14 +39,13 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 /**
- * Validate JSONC targets Setup will merge BEFORE any hard-path disk writes.
- * Intentionally does NOT preflight c_cpp_properties.json:
- * - patchCppProperties uses strict readJson + soft-fail in the hard phase
- * - hard-requiring props/compilerPath here previously aborted Setup before host
- *   cleanup and bounced Bugbot (missing props vs Cursor leftovers vs JSONC mismatch)
+ * Validate JSONC targets Setup will merge BEFORE helper-setting reads / extension
+ * prompts / hard-path disk writes.
+ * Intentionally does NOT preflight c_cpp_properties.json (soft-fail in hard phase;
+ * locked — jsonc-consistency.mdc / 3372ae7).
  */
-async function preflightSetupTargets(info: ProjectInfo, _host: HostKind): Promise<void> {
-    const workspaceFile = await resolveCodeWorkspaceFile(info.projectPath, info.projectName);
+async function preflightSetupTargets(projectPath: string, projectName: string): Promise<void> {
+    const workspaceFile = await resolveCodeWorkspaceFile(projectPath, projectName);
     if (workspaceFile) {
         try {
             await readJsonc(workspaceFile);
@@ -59,10 +58,13 @@ async function preflightSetupTargets(info: ProjectInfo, _host: HostKind): Promis
         }
     }
 
-    const settingsFile = path.join(info.projectPath, '.vscode', 'settings.json');
+    const settingsFile = path.join(projectPath, '.vscode', 'settings.json');
     if (await fileExists(settingsFile)) {
         try {
-            await readJsonc(settingsFile);
+            const settings = await readJsonc<unknown>(settingsFile);
+            if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+                throw new Error('root must be a JSON object');
+            }
         } catch (err: unknown) {
             throw new Error(
                 `Invalid JSON in .vscode/settings.json — fix it before Setup. ${(err as Error).message}`
@@ -204,7 +206,22 @@ async function setupUnrealProject(context: vscode.ExtensionContext) {
 
     await rememberUprojectPath(context, uproject.uprojectPath);
 
-    const resolved = await findProjectInfo(uproject.uprojectPath);
+    const projectPath = path.dirname(uproject.uprojectPath);
+    const projectName = path.basename(uproject.uprojectPath, '.uproject');
+
+    // PR valid: Setup runs before JSON validation — before getHelperSetting / ensureExtensions.
+    try {
+        await preflightSetupTargets(projectPath, projectName);
+    } catch (err: unknown) {
+        return vscode.window.showErrorMessage(`Setup failed: ${(err as Error).message}`);
+    }
+
+    let resolved;
+    try {
+        resolved = await findProjectInfo(uproject.uprojectPath);
+    } catch (err: unknown) {
+        return vscode.window.showErrorMessage(`Setup failed: ${(err as Error).message}`);
+    }
     if (resolved.status === 'cancelled') {
         return;
     }
@@ -213,13 +230,23 @@ async function setupUnrealProject(context: vscode.ExtensionContext) {
     }
     const info = resolved.info;
 
-    const preferHost = await getHelperSetting<PreferHost>(info.projectPath, 'preferHost', 'auto');
+    let preferHost: PreferHost;
+    try {
+        preferHost = await getHelperSetting<PreferHost>(info.projectPath, 'preferHost', 'auto');
+    } catch (err: unknown) {
+        return vscode.window.showErrorMessage(`Setup failed: ${(err as Error).message}`);
+    }
     const host = resolveHost(preferHost);
     const hostLabel = host === 'cursor' ? 'Cursor' : 'VS Code';
     const notes: string[] = [];
     let succeeded = false;
 
-    const extNote = await ensureExtensions(host, info.projectPath);
+    let extNote: string | undefined;
+    try {
+        extNote = await ensureExtensions(host, info.projectPath);
+    } catch (err: unknown) {
+        return vscode.window.showErrorMessage(`Setup failed: ${(err as Error).message}`);
+    }
     if (extNote) {
         notes.push(extNote);
     }
@@ -232,9 +259,6 @@ async function setupUnrealProject(context: vscode.ExtensionContext) {
         },
         async (progress) => {
             try {
-                progress.report({ message: 'Validating workspace targets...' });
-                await preflightSetupTargets(info, host);
-
                 progress.report({
                     message:
                         host === 'cursor'

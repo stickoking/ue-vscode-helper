@@ -31,7 +31,8 @@ function isSafeGitRemoteUrl(url: string): boolean {
 export async function initGitProject(context: vscode.ExtensionContext): Promise<void> {
     // Reuse Setup's remembered .uproject so Git init cannot target a different game.
     const preferred = getRememberedUprojectPath(context);
-    const resolved = await findProjectInfo(undefined, preferred);
+    // Git only needs .uproject root — skip engine/helper settings (invalid JSONC must not block).
+    const resolved = await findProjectInfo(undefined, preferred, { resolveEngine: false });
     if (resolved.status === 'cancelled') {
         return;
     }

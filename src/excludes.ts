@@ -54,6 +54,8 @@ const HELPER_MANAGED_ENGINE_EXCLUDE_SUFFIXES = [
 ] as const;
 
 export function isHelperManagedEngineExcludeKey(key: string): boolean {
+    // Intentional (59f2807): suffix-only — do not broaden to Epic/UE_ regex and do not
+    // stop dropping these helper keys (Bugbot "suffix too broad" is invalid to reverse).
     if (!isAbsoluteExcludeKey(key)) {
         return false;
     }

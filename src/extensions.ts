@@ -186,6 +186,9 @@ export async function rewriteWorkspaceRecommendations(
         return false;
     }
 
+    // Intentional: recommendations list host optionals for discovery.
+    // `ensureExtensions` mode only gates Install prompts — not this list
+    // (Bugbot "recommendations ignore ensureExtensions" is invalid to reverse).
     const promptPython = await getHelperSetting<boolean>(projectPath, 'promptPython', true);
     const recommendations = hostRecommendations(host, promptPython);
 

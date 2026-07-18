@@ -427,12 +427,19 @@ function runDotNetRestore(
         });
 
         let settled = false;
+        let timedOut = false;
+        let exitGrace: ReturnType<typeof setTimeout> | undefined;
+        const timeoutError = () =>
+            new Error(`timed out after ${Math.round(timeoutMs / 1000)}s`);
         const finish = (err?: Error) => {
             if (settled) {
                 return;
             }
             settled = true;
             clearTimeout(timer);
+            if (exitGrace !== undefined) {
+                clearTimeout(exitGrace);
+            }
             if (err) {
                 reject(err);
             } else {
@@ -440,13 +447,23 @@ function runDotNetRestore(
             }
         };
 
+        // PR valid: "Restore timeout may leave dotnet running".
+        // After kill: wait for child close (or grace) before finishing — sync taskkill
+        // stays fire-and-forget (do NOT await-taskkill Promise — undone bounce).
+        // Once timedOut, ALWAYS reject timeout — never resolve success after kill
+        // (that flip-flop caused "treats killed run as success"). Intentional.
         const timer = setTimeout(() => {
+            timedOut = true;
             killProcessTree(child.pid);
-            finish(new Error(`timed out after ${Math.round(timeoutMs / 1000)}s`));
+            exitGrace = setTimeout(() => finish(timeoutError()), 8_000);
         }, timeoutMs);
 
         child.on('error', (err) => finish(err));
         child.on('close', (code, signal) => {
+            if (timedOut) {
+                finish(timeoutError());
+                return;
+            }
             if (code === 0) {
                 finish();
                 return;

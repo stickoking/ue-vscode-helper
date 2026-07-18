@@ -17,30 +17,42 @@ Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3
 - Git init command retained (Unreal `.gitignore`, confirmation guards)
 
 ### Fixed
+- Setup validates workspace / `.vscode/settings.json` JSONC **before** `getHelperSetting` / ensure-extensions; invalid project settings throw (no silent fallback)
+- BuildRules `dotnet restore` on timeout: sync process-tree kill, then wait for child exit (or short grace) before reporting timeout; once kill was requested, result is always timeout (never success-after-kill flip-flop)
+- Git init skips engine/helper settings resolve (`resolveEngine: false`) so invalid settings JSONC cannot block init
 - Cursor `.clangd` no longer sets project-wide `Diagnostics.Suppress: ["*"]` — real C++ error squiggles show again; Engine PathMatch still fully suppressed
-- BuildRules IntelliSense `dotnet restore` no longer pipes undrained stdout (large NuGet output could fill the pipe and hang); stdout ignored, stderr drained for failure detail; 90s timeout + process-tree kill unchanged
+- BuildRules IntelliSense `dotnet restore` no longer pipes undrained stdout (large NuGet output could fill the pipe and hang); stdout ignored, stderr drained for failure detail; 90s timeout + process-tree kill
 - VS Code Python checklist no longer treats Cursor-only `anysphere.cursorpyright` as satisfying Python; Cursor path still accepts cursorpyright **or** `ms-python.python`
 - Setup progress / Reload Window UX: dialogs outside `withProgress`; always prompt Reload after success; restore timeout non-fatal
 - Slim BuildRules: set `dotnet.defaultSolution` only after csproj+sln succeed; on failure restore each file to its pre-write snapshot (no orphan half-state); keep the pointer only when a complete prior pair is verified
 - Always refresh root `compile_commands.json` from `.vscode/compileCommands_*` when the source exists
 - Pick highest UE-bundled DotNet version folder with numeric sort (`10.0` over `9.0`); clear stale `dotnet.dotnetPath` / terminal `DOTNET_*` when DotNet is missing
 - `UE_5_N_OR_LATER` DefineConstants through the detected engine minor (not a hard cap at 20)
-- Exclude maps drop stale absolute engine-path keys (including Windows `C:\...`) when `enginePath` changes; relative globs preserved
+- Exclude merge drops only **helper-managed** absolute engine suffixes when `enginePath` changes (not broad Epic/UE_ regex); relative globs preserved — see Intentional below
 - Resolve `.code-workspace` by `.uproject` `projectName`, then folder basename
-- Setup preflights workspace/settings/`c_cpp_properties` JSON (and VS Code `compilerPath` + `compileCommands_*.json`) before profile disk writes
-- `findProjectInfo` uses `dirname(.uproject)`; multi-`.uproject` → active-editor ancestry / workspace-folder root / QuickPick (never arbitrary first match)
+- Setup preflights workspace/settings JSONC only (**not** `c_cpp_properties` — soft-fail in hard phase; `3372ae7`)
+- `findProjectInfo` uses `dirname(.uproject)`; multi-`.uproject` → active-editor / remembered / QuickPick (never arbitrary first match)
 - Git init uses the same `.uproject` root as Setup; remote add via `execFile` + URL validation
 - VS Code profile re-enables `C_Cpp.*`, clears Cursor-only `dotnet.*` / `omnisharp.*` / terminal `DOTNET_*`, requires real `compilerPath`, and uses absolute `<uproject>/Source` (not `${workspaceFolder}/Source`)
 - Slim BuildRules discovers `*.Build.cs` / `*.Target.cs` under game `Source/` and all of `Plugins/` (including nested plugin layouts)
 - `ensureCompileCommands` never throws on copy/IO failure — Setup continues after `.clangd` / BuildRules writes (soft note instead of abort)
 - VS Code Setup always applies host-cleanup settings / recommendations even when `c_cpp_properties` cannot be patched (soft warning instead of leaving Cursor leftovers)
 - Preflight/settings/workspace reads accept JSONC (comments + trailing commas)
-- Exclude merge drops only engine-like absolute paths — preserves unrelated user absolute excludes
 - Hard Setup phase uses one `HardDiskTransaction`: snapshot settings/workspace/(Cursor BuildRules)/(VS Code c_cpp_properties) BEFORE writes; any hard-path failure rolls them all back together (checked). Soft phase (clangd / compile_commands / restore) runs only after hard commit
 - VS Code `c_cpp_properties.json` remains fully supported (hard phase after settings; soft note + props-only rollback if UE-generated file missing)
 - Removed dead/redundant `applyCursorProfile` / `applyVsCodeProfile` / duplicate snapshot helpers (Setup owns the transaction)
 - `ensureCompileCommands` reports `refreshed` | `stale` | `missing` | `error` — stale root without `.vscode/compileCommands_*` warns instead of silent success
 
+### Intentional (invalid Bugbot “fixes” — do not reverse)
+
+Documented in `.cursor/rules/intentional-designs.mdc` so agents/Bugbot do not flip-flop:
+
+- **Helper-managed exclude suffixes** (`59f2807`): only drop absolute keys ending in known Engine helper suffixes. Not “suffix too broad → stop dropping”; not broad Epic/UE_ strip.
+- **Game `.vscode/settings.json` for helper keys** (`59f2807`): preferred over first-folder `getConfiguration` / workspace-only reads. Not “stale .vscode overrides workspace → prefer `.code-workspace`”.
+- **`ensureExtensions` vs workspace recommendations**: mode controls Install **prompts**; recommendations still list host optionals for discovery — different knobs.
+- **clangd Engine PathMatch** (`59f2807`): project diagnostics on; Engine PathMatch Suppress+Skip. Do not thrash PathMatch for Bugbot breadth complaints.
+- **Restore after kill**: once timeout kill is requested, outcome is timeout after wait — never “success if exit 0 after kill”.
+- **No `c_cpp_properties` preflight** (`3372ae7`): soft-fail in hard phase only.
 ### Changed
 - Setup order locked: **extensions → config patch → single Reload Window**
 - Display name / description: Unreal Engine VS Code / Cursor Helper

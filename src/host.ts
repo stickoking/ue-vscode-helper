@@ -12,7 +12,11 @@ export function detectHost(): HostKind {
 /**
  * Read ue-vscode-helper.* from the game's own `.vscode/settings.json` first.
  * Does NOT use getConfiguration(resource) — that was the prior bounce fix.
- * Falls back to unscoped config only when the project file has no key.
+ * Does NOT prefer `.code-workspace` settings over the game file (intentional —
+ * multi-root / wrong-folder Bugbot; see intentional-designs.mdc).
+ * Falls back to unscoped config only when the project file is missing the key.
+ * If the project settings file exists but is invalid JSONC, throws (no silent
+ * fallback) so Setup cannot prompt extensions then abort (PR: Setup before JSON).
  */
 export async function getHelperSetting<T>(
     projectPath: string | undefined,
@@ -22,14 +26,24 @@ export async function getHelperSetting<T>(
     if (projectPath) {
         const settingsFile = path.join(projectPath, '.vscode', 'settings.json');
         if (await fileExists(settingsFile)) {
+            let raw: Record<string, unknown>;
             try {
-                const raw = await readJsonc<Record<string, unknown>>(settingsFile);
-                const fullKey = `ue-vscode-helper.${key}`;
-                if (Object.prototype.hasOwnProperty.call(raw, fullKey) && raw[fullKey] !== undefined) {
-                    return raw[fullKey] as T;
-                }
-            } catch {
-                // fall through
+                raw = await readJsonc<Record<string, unknown>>(settingsFile);
+            } catch (err: unknown) {
+                throw new Error(
+                    `Invalid JSON in .vscode/settings.json — fix it before Setup. ${
+                        (err as Error).message
+                    }`
+                );
+            }
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                throw new Error(
+                    'Invalid JSON in .vscode/settings.json — root must be a JSON object. Fix it before Setup.'
+                );
+            }
+            const fullKey = `ue-vscode-helper.${key}`;
+            if (Object.prototype.hasOwnProperty.call(raw, fullKey) && raw[fullKey] !== undefined) {
+                return raw[fullKey] as T;
             }
         }
     }
