@@ -40,10 +40,10 @@ const VSCODE_OPTIONAL: ExtensionEntry[] = [
     { id: 'ms-vscode.cmake-tools', label: 'CMake Tools' },
 ];
 
+/** VS Code: only ms-python.python — never Cursor-only anysphere.cursorpyright. */
 const VSCODE_PYTHON: ExtensionEntry = {
     id: 'ms-python.python',
     label: 'Python',
-    satisfiedBy: ['ms-python.python', 'anysphere.cursorpyright'],
 };
 
 /** Never recommend/install on Cursor. */

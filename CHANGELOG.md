@@ -2,6 +2,30 @@
 
 All notable changes to the "ue-vscode-helper" extension will be documented in this file.
 
+## [1.1.0] - 2026-07-18
+
+Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3.x).
+
+### Added
+- **Dual-host IntelliSense**: auto-detect Cursor vs VS Code (`ue-vscode-helper.preferHost`); Cursor uses clangd + disable Microsoft/Anysphere C++ IntelliSense; VS Code keeps Microsoft C++ via `c_cpp_properties.json`
+- **Ensure extensions** (`src/extensions.ts`): soft Install/Dismiss for missing host extensions **before** profile/config patch; awaits installs; marketplace search fallback; never hard-fails Setup
+- Settings `ue-vscode-helper.ensureExtensions` (`required` \| `requiredAndOptional` \| `off`, default **requiredAndOptional**) and `ue-vscode-helper.promptPython` (default **true**)
+- Host matrices: Cursor required clangd + `anysphere.csharp`; optional .NET runtime + `anysphere.cpptools` + Python; VS Code required `ms-vscode.cpptools` + `ms-dotnettools.csharp`; optional csdevkit / .NET runtime / Python / CMake Tools
+- Rewrites `.code-workspace` `extensions.recommendations` (host-aware); marks `ms-vscode.cpptools` as unwanted on Cursor
+- Slim `.vscode/<Project>.BuildRules.IntelliSense.csproj` + sibling `.sln` for Build.cs / Target.cs IntelliSense (no UE5Rules); `dotnet.defaultSolution` must point at the **`.sln`**
+- Engine path from `.uproject` `EngineAssociation`; mirror excludes/settings to `.code-workspace` and `.vscode/settings.json`; write `.clangd` + root `compile_commands.json` on Cursor
+- Git init command retained (Unreal `.gitignore`, confirmation guards)
+
+### Fixed
+- Cursor `.clangd` no longer sets project-wide `Diagnostics.Suppress: ["*"]` — real C++ error squiggles show again; Engine PathMatch still fully suppressed
+- BuildRules IntelliSense `dotnet restore` no longer pipes undrained stdout (large NuGet output could fill the pipe and hang); stdout ignored, stderr drained for failure detail; 90s timeout + process-tree kill unchanged
+- VS Code Python checklist no longer treats Cursor-only `anysphere.cursorpyright` as satisfying Python; Cursor path still accepts cursorpyright **or** `ms-python.python`
+- Setup progress / Reload Window UX: dialogs outside `withProgress`; always prompt Reload after success; restore timeout non-fatal
+
+### Changed
+- Setup order locked: **extensions → config patch → single Reload Window**
+- Display name / description: Unreal Engine VS Code / Cursor Helper
+
 ## [0.3.0] - 2026-07-18
 
 ### Added

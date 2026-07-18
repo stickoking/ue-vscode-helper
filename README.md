@@ -51,10 +51,10 @@ Setup order is locked: **extensions → config patch → single Reload Window**.
 ```bash
 npm run package
 npm run vsix
-cursor --install-extension ue-vscode-helper-0.3.0.vsix
+cursor --install-extension ue-vscode-helper-1.1.0.vsix
 ```
 
-Same VSIX works in VS Code via `code --install-extension ue-vscode-helper-0.3.0.vsix`.
+Same VSIX works in VS Code via `code --install-extension ue-vscode-helper-1.1.0.vsix`.
 
 > **CLI deprecation noise (harmless):** `cursor --install-extension` may print Node `[DEP0040] punycode` and/or `[DEP0169] url.parse()` warnings. Those come from **Cursor’s host CLI** (`resources/app/out/cli.js` / `cliProcessMain.js` → bundled `node-fetch` / `whatwg-url`), not from this extension. The VSIX has no runtime deps and no `punycode`/`url.parse` usage. The same install still reports success; VS Code’s `code` CLI can show `url.parse` noise too. **Not a marketplace blocker** and not fixable inside this repo.
 
@@ -90,52 +90,27 @@ Cold agents working on this repo: read **`.cursor/skills/ue-helper/SKILL.md`** (
 
 ## Release Notes
 
-### 0.3.0
+### 1.1.0 (July 2026)
+- Cursor IDE support with dual-host IntelliSense profiles (Cursor vs VS Code)
+- On Cursor: clangd IntelliSense; Microsoft/Anysphere C++ IntelliSense disabled to avoid conflicts
+- Real C++ error squiggles again (no blanket diagnostic suppress on project Source)
+- C# Build.cs / Target.cs IntelliSense via a slim BuildRules solution (avoids scanning the entire Engine)
+- Setup ensures required IDE extensions first (host-aware), then patches configs, then prompts Reload
+- Soft Install / Dismiss for missing extensions; Python and extras optional
+- Git init command retained
+- Fixes: restore hang from filled stdout buffer; VS Code Python checklist no longer treating Cursor Pyright as installed; clearer Setup progress and reload UX
 
-- **Ensure extensions** implemented: soft Install/Dismiss before config patch; host matrices; `ensureExtensions` + `promptPython` settings; workspace `extensions.recommendations` rewritten host-aware
-- Setup order locked: extensions → configs → single Reload Window
+### 1.0.1 (June 2026)
+- Fixed TypeScript errors and updated type definitions for test suite
+- Updated dependencies to address package vulnerabilities
+- Quality of life improvements
 
-### 0.2.7
-
-- Cursor rule + skill documenting architecture and pitfalls (slim IntelliSense `.sln`, no project-wide clangd `Suppress "*"`, re-run Setup after UE regen)
-- Skill/rule expanded: host extension stacks, official-vs-reality, planned ensure-extensions design (docs only)
-
-### 0.2.6
-
-- Slim `.sln` wrapper + `dotnet.defaultSolution` must be `.sln` (not `.csproj`) so Cursor C# does not auto-load root ModuleRules → UE5Rules
-
-### 0.2.5
-
-- Slim `.vscode/<Project>.BuildRules.IntelliSense.csproj` for Build.cs / Target.cs (no UE5Rules); fixes forever-loading ModuleRules / “Miscellaneous Files”
-
-### 0.2.4
-
-- Always show Reload Window prompt after successful Setup
-
-### 0.2.3
-
-- Cursor `.clangd`: diagnostics enabled for project Source; Engine still suppressed; C# IntelliSense documented as part of the locked-in Cursor profile
-- VS Code profile continues to leave Microsoft C++ alone (no clangd suppress-all)
-
-### 0.2.2
-
-- Cursor `.clangd`: stop suppressing all diagnostics in project Source (real syntax errors show again); Engine paths still fully suppressed
-
-### 0.2.1
-
-- Clear progress steps; ModuleRules restore no longer blocks “Patching excludes & settings…”
-- 90s restore timeout + `restoreModuleRules` setting; C# ModuleRules settings always written first
-
-### 0.2.0
-
-- Dual-host: Cursor (clangd) vs VS Code (Microsoft C++) profiles
-- `preferHost` setting; engine path from `.uproject` `EngineAssociation`
-- Mirror settings to `.vscode/settings.json`; write `.clangd`; ModuleRules restore hint
-
-### 0.1.x
-
-- IntelliSense + excludes patching and Git init for VS Code
+### 1.0.0 (March 2026)
+- Full IntelliSense + excludes patching
+- Added strong Git init guards with confirmation dialogs
+- Clean native TypeScript implementation
 
 ---
 
-Feedback / issues welcome on GitHub.
+Made with ❤️ for the Unreal community.  
+Feedback / issues welcome on GitHub!

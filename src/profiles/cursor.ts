@@ -377,6 +377,9 @@ function runDotNetRestore(
     timeoutMs: number
 ): Promise<void> {
     return new Promise((resolve, reject) => {
+        // Ignore stdout — only exit code matters for success. Piping stdout without
+        // draining can fill the OS pipe buffer and hang restore on large NuGet output.
+        // Keep stderr piped (and drained) for truncated failure detail.
         const child = spawn(dotnetExe, ['restore', csproj], {
             cwd,
             env: {
@@ -384,7 +387,7 @@ function runDotNetRestore(
                 DOTNET_ROOT: path.dirname(dotnetExe),
                 DOTNET_MULTILEVEL_LOOKUP: '0',
             },
-            stdio: ['ignore', 'pipe', 'pipe'],
+            stdio: ['ignore', 'ignore', 'pipe'],
             windowsHide: true,
         });
 
