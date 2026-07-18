@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { HostKind } from './host';
+import { HostKind, getHelperSetting } from './host';
 import { resolveCodeWorkspaceFile } from './excludes';
 import { readJsonc, writeJson } from './util';
 
@@ -120,11 +120,17 @@ async function installExtension(id: string): Promise<boolean> {
  * Call BEFORE profile/config patch (extensions can overwrite settings on first install).
  * Dialogs must stay outside `withProgress`.
  */
-export async function ensureExtensions(host: HostKind): Promise<string | undefined> {
-    const config = vscode.workspace.getConfiguration('ue-vscode-helper');
+export async function ensureExtensions(
+    host: HostKind,
+    projectPath?: string
+): Promise<string | undefined> {
     const mode =
-        config.get<EnsureExtensionsMode>('ensureExtensions') ?? 'requiredAndOptional';
-    const promptPython = config.get<boolean>('promptPython') ?? true;
+        (await getHelperSetting<EnsureExtensionsMode>(
+            projectPath,
+            'ensureExtensions',
+            'requiredAndOptional'
+        )) ?? 'requiredAndOptional';
+    const promptPython = await getHelperSetting<boolean>(projectPath, 'promptPython', true);
 
     if (mode === 'off') {
         return undefined;
@@ -180,8 +186,7 @@ export async function rewriteWorkspaceRecommendations(
         return false;
     }
 
-    const promptPython =
-        vscode.workspace.getConfiguration('ue-vscode-helper').get<boolean>('promptPython') ?? true;
+    const promptPython = await getHelperSetting<boolean>(projectPath, 'promptPython', true);
     const recommendations = hostRecommendations(host, promptPython);
 
     const ws = await readJsonc<Record<string, any>>(workspaceFile);

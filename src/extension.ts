@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { resolveHost, HostKind } from './host';
+import { resolveHost, HostKind, getHelperSetting, PreferHost } from './host';
 import {
     buildRulesIntelliSenseCsproj,
     buildRulesIntelliSenseSln,
@@ -213,12 +213,13 @@ async function setupUnrealProject(context: vscode.ExtensionContext) {
     }
     const info = resolved.info;
 
-    const host = resolveHost();
+    const preferHost = await getHelperSetting<PreferHost>(info.projectPath, 'preferHost', 'auto');
+    const host = resolveHost(preferHost);
     const hostLabel = host === 'cursor' ? 'Cursor' : 'VS Code';
     const notes: string[] = [];
     let succeeded = false;
 
-    const extNote = await ensureExtensions(host);
+    const extNote = await ensureExtensions(host, info.projectPath);
     if (extNote) {
         notes.push(extNote);
     }

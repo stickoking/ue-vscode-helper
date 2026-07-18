@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { fileExists, readJson, normalizeSlashes } from './util';
+import { getHelperSetting } from './host';
 
 const EPIC_GAMES_ROOT = 'C:\\Program Files\\Epic Games';
 
@@ -143,8 +144,15 @@ export async function findProjectInfo(
  * then fall back to ue-vscode-helper.enginePath setting.
  */
 export async function resolveEnginePath(uprojectPath: string): Promise<string> {
-    const config = vscode.workspace.getConfiguration('ue-vscode-helper');
-    const configured = (config.get<string>('enginePath') || `${EPIC_GAMES_ROOT}\\UE_5.4`).replace(/\\+$/, '');
+    // Prefer this game's .vscode/settings.json (not first multi-root folder via getConfiguration).
+    const projectPath = path.dirname(uprojectPath);
+    const configured = (
+        (await getHelperSetting<string>(
+            projectPath,
+            'enginePath',
+            `${EPIC_GAMES_ROOT}\\UE_5.4`
+        )) || `${EPIC_GAMES_ROOT}\\UE_5.4`
+    ).replace(/\\+$/, '');
 
     try {
         const uproject = await readJson<{ EngineAssociation?: string }>(uprojectPath);

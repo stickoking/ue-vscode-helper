@@ -28,29 +28,47 @@ export function isAbsoluteExcludeKey(key: string): boolean {
 }
 
 /**
- * Absolute excludes that look like UE engine install trees (safe to drop on Setup so a
- * changed EngineAssociation does not leave stale watchers). User absolute paths that
- * are unrelated to the engine are preserved.
+ * Absolute excludes this helper itself writes under an engine root (see buildExcludeMaps).
+ * Drop only these managed suffixes so a changed enginePath clears stale helper keys —
+ * without wiping arbitrary user absolutes that happen to contain "Epic Games" / "UE_5.x".
+ * (Prior approach: broad isEngineLike regex — bounced with "drops user paths".)
  */
-export function isEngineLikeAbsoluteExcludeKey(key: string): boolean {
+const HELPER_MANAGED_ENGINE_EXCLUDE_SUFFIXES = [
+    '/Engine/Binaries/**',
+    '/Engine/Content/**',
+    '/Engine/DerivedDataCache/**',
+    '/Engine/Intermediate/**',
+    '/Engine/Saved/**',
+    '/Engine/Shaders/**',
+    '/Engine/Plugins/**/Binaries/**',
+    '/Engine/Plugins/**/Intermediate/**',
+    '/FeaturePacks/**',
+    '/Templates/**',
+    '/Engine/Binaries',
+    '/Engine/Content',
+    '/Engine/DerivedDataCache',
+    '/Engine/Intermediate',
+    '/Engine/Saved',
+    '/FeaturePacks',
+    '/Templates',
+] as const;
+
+export function isHelperManagedEngineExcludeKey(key: string): boolean {
     if (!isAbsoluteExcludeKey(key)) {
         return false;
     }
     const n = key.replace(/\\/g, '/');
-    return (
-        /\/Epic Games\//i.test(n) ||
-        /\/UE_\d+\.\d+/i.test(n) ||
-        /\/Engine\/(Binaries|Content|DerivedDataCache|Intermediate|Saved|Shaders|Plugins|Source)\b/i.test(
-            n
-        ) ||
-        /\/FeaturePacks\b/i.test(n) ||
-        /\/Templates\b/i.test(n)
-    );
+    return HELPER_MANAGED_ENGINE_EXCLUDE_SUFFIXES.some((suffix) => n.endsWith(suffix));
+}
+
+/** @deprecated Use isHelperManagedEngineExcludeKey */
+export function isEngineLikeAbsoluteExcludeKey(key: string): boolean {
+    return isHelperManagedEngineExcludeKey(key);
 }
 
 /**
- * Merge one exclude map: drop stale engine-like absolute keys from existing,
- * keep relative globs and non-engine user absolute paths, then apply incoming.
+ * Merge one exclude map: drop stale helper-managed engine keys from existing,
+ * keep relative globs and non-managed user absolute paths, then apply incoming.
  */
 export function mergeExcludeMap(
     existing: Record<string, boolean> | undefined,
@@ -59,7 +77,7 @@ export function mergeExcludeMap(
     const result: Record<string, boolean> = {};
     if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
         for (const [k, v] of Object.entries(existing)) {
-            if (!isEngineLikeAbsoluteExcludeKey(k)) {
+            if (!isHelperManagedEngineExcludeKey(k)) {
                 result[k] = v;
             }
         }

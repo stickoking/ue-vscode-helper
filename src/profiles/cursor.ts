@@ -14,6 +14,7 @@ import {
 } from '../engine';
 import { fileExists } from '../util';
 import { createHash } from 'crypto';
+import { getHelperSetting } from '../host';
 
 /** Max wait for slim BuildRules IntelliSense `dotnet restore` — never block setup forever. */
 export const BUILD_RULES_RESTORE_TIMEOUT_MS = 90_000;
@@ -107,9 +108,10 @@ Index:
   Background: Build
 
 ---
-# Engine only. Suppress "*" must never be project-wide (hides all squiggles).
+# Engine install trees only (not a game living under "Epic Games/...").
+# PathMatch requires Epic Games/UE_X.Y or UE_X.Y or Engine/Source — never bare "Epic Games".
 If:
-  PathMatch: ".*([/\\\\\\\\]Epic Games[/\\\\\\\\]|[/\\\\\\\\]UE_5\\\\.[0-9]+[/\\\\\\\\]|[/\\\\\\\\]Engine[/\\\\\\\\]Source[/\\\\\\\\]).*"
+  PathMatch: ".*([/\\\\\\\\]Epic Games[/\\\\\\\\]UE_\\d+\\\\.\\d+[/\\\\\\\\]|[/\\\\\\\\]UE_\\d+\\\\.\\d+[/\\\\\\\\]|[/\\\\\\\\]Engine[/\\\\\\\\]Source[/\\\\\\\\]).*"
 Index:
   Background: Skip
 Diagnostics:
@@ -463,9 +465,7 @@ export async function restoreBuildRulesIntelliSense(
     info: ProjectInfo,
     timeoutMs: number = BUILD_RULES_RESTORE_TIMEOUT_MS
 ): Promise<string | undefined> {
-    const enabled = vscode.workspace
-        .getConfiguration('ue-vscode-helper')
-        .get<boolean>('restoreModuleRules', true);
+    const enabled = await getHelperSetting<boolean>(info.projectPath, 'restoreModuleRules', true);
     if (!enabled) {
         return 'BuildRules IntelliSense restore skipped (ue-vscode-helper.restoreModuleRules is false).';
     }
