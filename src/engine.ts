@@ -23,10 +23,11 @@ export type UprojectResolveResult =
     | { status: 'cancelled' };
 
 export async function resolveUprojectPath(): Promise<UprojectResolveResult> {
+    // No maxResults cap — multi-game repos can exceed arbitrary limits.
+    // Exclude common UE junk so the search stays fast without truncating results.
     const uprojectFiles = await vscode.workspace.findFiles(
         '**/*.uproject',
-        '**/node_modules/**',
-        50
+        '**/{node_modules,Binaries,DerivedDataCache,Intermediate,Saved}/**'
     );
     if (uprojectFiles.length === 0) {
         return { status: 'none' };

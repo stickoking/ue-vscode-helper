@@ -31,6 +31,15 @@ Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3
 - `findProjectInfo` uses `dirname(.uproject)`; multi-`.uproject` → active-editor ancestry / workspace-folder root / QuickPick (never arbitrary first match)
 - Git init uses the same `.uproject` root as Setup; remote add via `execFile` + URL validation
 - VS Code profile re-enables `C_Cpp.*`, clears Cursor-only `dotnet.*` / `omnisharp.*` / terminal `DOTNET_*`, requires real `compilerPath`, and uses absolute `<uproject>/Source` (not `${workspaceFolder}/Source`)
+- Slim BuildRules discovers `*.Build.cs` / `*.Target.cs` under game `Source/` and all of `Plugins/` (including nested plugin layouts)
+- `ensureCompileCommands` never throws on copy/IO failure — Setup continues after `.clangd` / BuildRules writes (soft note instead of abort)
+- VS Code Setup always applies host-cleanup settings / recommendations even when `c_cpp_properties` cannot be patched (soft warning instead of leaving Cursor leftovers)
+- Preflight/settings/workspace reads accept JSONC (comments + trailing commas)
+- Exclude merge drops only engine-like absolute paths — preserves unrelated user absolute excludes
+- Hard Setup phase uses one `HardDiskTransaction`: snapshot settings/workspace/(Cursor BuildRules)/(VS Code c_cpp_properties) BEFORE writes; any hard-path failure rolls them all back together (checked). Soft phase (clangd / compile_commands / restore) runs only after hard commit
+- VS Code `c_cpp_properties.json` remains fully supported (hard phase after settings; soft note + props-only rollback if UE-generated file missing)
+- Removed dead/redundant `applyCursorProfile` / `applyVsCodeProfile` / duplicate snapshot helpers (Setup owns the transaction)
+- `ensureCompileCommands` reports `refreshed` | `stale` | `missing` | `error` — stale root without `.vscode/compileCommands_*` warns instead of silent success
 
 ### Changed
 - Setup order locked: **extensions → config patch → single Reload Window**

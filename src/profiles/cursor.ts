@@ -5,7 +5,6 @@ import { spawn } from 'child_process';
 import {
     buildRulesIntelliSenseCsproj,
     buildRulesIntelliSenseSln,
-    buildRulesIntelliSenseSlnRelative,
     epicGamesBuildCsproj,
     findUeDotNetPath,
     moduleRulesCsproj,
@@ -50,7 +49,7 @@ export async function buildCursorSettings(info: ProjectInfo): Promise<Record<str
         'C_Cpp.formatting': 'disabled',
         'files.associations': FILE_ASSOCIATIONS,
         // dotnet.defaultSolution is set only after slim csproj+sln write succeeds
-        // (see applyCursorProfile) — never point C# LS at a missing solution.
+        // (see runHardSetupPhase in extension.ts) — never point C# LS at a missing solution.
         'dotnet.backgroundAnalysis.compilerDiagnosticsScope': 'openFiles',
         'dotnet.backgroundAnalysis.analyzerDiagnosticsScope': 'openFiles',
         'omnisharp.projectLoadTimeout': 120,
@@ -126,28 +125,43 @@ export async function writeClangdConfig(projectPath: string): Promise<void> {
     await fs.writeFile(clangdPath, buildClangdConfigContent(), 'utf8');
 }
 
+export type CompileCommandsStatus = 'refreshed' | 'stale' | 'missing' | 'error';
+
 /**
  * Ensure root compile_commands.json exists for clangd (CompilationDatabase: .).
  * Prefer `.vscode/compileCommands_<Project>.json`, then Default.
  * Always overwrite root from the preferred source when present so Setup after UE
  * project-file regen does not leave a stale root copy.
+ *
+ * Never throws. Distinguishes refreshed vs stale-root-only so Setup can warn when
+ * Unreal sources are missing and an old root file would otherwise look like success.
  */
-export async function ensureCompileCommands(projectPath: string, projectName: string): Promise<boolean> {
-    const rootCc = path.join(projectPath, 'compile_commands.json');
-    const vscodeDir = path.join(projectPath, '.vscode');
-    const candidates = [
-        path.join(vscodeDir, `compileCommands_${projectName}.json`),
-        path.join(vscodeDir, 'compileCommands_Default.json'),
-    ];
+export async function ensureCompileCommands(
+    projectPath: string,
+    projectName: string
+): Promise<CompileCommandsStatus> {
+    try {
+        const rootCc = path.join(projectPath, 'compile_commands.json');
+        const vscodeDir = path.join(projectPath, '.vscode');
+        const candidates = [
+            path.join(vscodeDir, `compileCommands_${projectName}.json`),
+            path.join(vscodeDir, 'compileCommands_Default.json'),
+        ];
 
-    for (const src of candidates) {
-        if (await fileExists(src)) {
-            await fs.copyFile(src, rootCc);
-            return true;
+        for (const src of candidates) {
+            if (await fileExists(src)) {
+                await fs.copyFile(src, rootCc);
+                return 'refreshed';
+            }
         }
-    }
 
-    return fileExists(rootCc);
+        if (await fileExists(rootCc)) {
+            return 'stale';
+        }
+        return 'missing';
+    } catch {
+        return 'error';
+    }
 }
 
 async function walkRulesFiles(dir: string, results: string[]): Promise<void> {
@@ -167,11 +181,14 @@ async function walkRulesFiles(dir: string, results: string[]): Promise<void> {
     }
 }
 
-/** Discover `*.Build.cs` / `*.Target.cs` under Source/. */
+/**
+ * Discover `*.Build.cs` / `*.Target.cs` under game `Source/` and anywhere under
+ * `Plugins/` (including nested layouts like `Plugins/Runtime/MyPlugin/Source`).
+ */
 export async function discoverProjectRulesFiles(projectPath: string): Promise<string[]> {
-    const sourceDir = path.join(projectPath, 'Source');
     const results: string[] = [];
-    await walkRulesFiles(sourceDir, results);
+    await walkRulesFiles(path.join(projectPath, 'Source'), results);
+    await walkRulesFiles(path.join(projectPath, 'Plugins'), results);
     return results.sort((a, b) => a.localeCompare(b));
 }
 
@@ -239,7 +256,7 @@ export async function writeBuildRulesIntelliSenseCsproj(info: ProjectInfo): Prom
 }> {
     const rulesFiles = await discoverProjectRulesFiles(info.projectPath);
     if (rulesFiles.length === 0) {
-        throw new Error('No *.Build.cs / *.Target.cs found under Source/');
+        throw new Error('No *.Build.cs / *.Target.cs found under Source/ or Plugins/');
     }
 
     const propsPath = unrealEngineCsprojProps(info.enginePath);
@@ -471,105 +488,34 @@ export async function restoreModuleRules(
     return restoreBuildRulesIntelliSense(info, timeoutMs);
 }
 
-/** Snapshot a file for transactional restore (`null` = did not exist / unreadable). */
-async function readFileSnapshot(filePath: string): Promise<string | null> {
-    try {
-        return await fs.readFile(filePath, 'utf8');
-    } catch {
-        return null;
-    }
-}
-
 /**
- * Restore a file to a prior snapshot (`null` → delete if present).
- * Returns false if the rollback could not be completed.
+ * Write `.clangd` + refresh root compile_commands AFTER hard Setup commits.
+ * Never throws — failures become notes so Setup can still succeed / Reload.
  */
-async function restoreFileSnapshot(filePath: string, previous: string | null): Promise<boolean> {
-    try {
-        if (previous === null) {
-            try {
-                await fs.unlink(filePath);
-            } catch (err: unknown) {
-                const code = (err as NodeJS.ErrnoException).code;
-                if (code !== 'ENOENT') {
-                    return false;
-                }
-            }
-            return true;
-        }
-        await fs.writeFile(filePath, previous, 'utf8');
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Cursor profile files + settings object only.
- * Writes slim BuildRules IntelliSense csproj + .sln. Does NOT run restore or UI prompts —
- * those belong in the setup orchestrator so progress messages stay accurate.
- *
- * `dotnet.defaultSolution` is only merged after both csproj and sln write succeed.
- * On failure: restore each file to its pre-write snapshot only (null snapshot → delete).
- * Never a second "delete both" pass — that can wipe still-good files after a pre-write
- * error or a partial restore failure. Keep defaultSolution only when a complete prior
- * pair is verified present after restore.
- */
-export async function applyCursorProfile(info: ProjectInfo): Promise<{
-    settings: Record<string, any>;
-    notes: string[];
-}> {
+export async function writeCursorSecondaryArtifacts(info: ProjectInfo): Promise<string[]> {
     const notes: string[] = [];
-    const settings = await buildCursorSettings(info);
-
-    await writeClangdConfig(info.projectPath);
-
-    const csprojPath = buildRulesIntelliSenseCsproj(info.projectPath, info.projectName);
-    const slnPath = buildRulesIntelliSenseSln(info.projectPath, info.projectName);
-    const prevCsproj = await readFileSnapshot(csprojPath);
-    const prevSln = await readFileSnapshot(slnPath);
-
-    const slnRelative = buildRulesIntelliSenseSlnRelative(info.projectName);
     try {
-        const { rulesCount } = await writeBuildRulesIntelliSenseCsproj(info);
-        await writeBuildRulesIntelliSenseSln(info);
-        settings['dotnet.defaultSolution'] = slnRelative;
-        notes.push(
-            `Slim BuildRules IntelliSense csproj+sln written (${rulesCount} rules file(s); no UE5Rules). ` +
-                `dotnet.defaultSolution → ${slnRelative}`
-        );
+        await writeClangdConfig(info.projectPath);
     } catch (err: unknown) {
-        const csOk = await restoreFileSnapshot(csprojPath, prevCsproj);
-        const slnOk = await restoreFileSnapshot(slnPath, prevSln);
-        const restoredPair =
-            prevCsproj !== null &&
-            prevSln !== null &&
-            csOk &&
-            slnOk &&
-            (await fileExists(csprojPath)) &&
-            (await fileExists(slnPath));
-
-        if (restoredPair) {
-            settings['dotnet.defaultSolution'] = slnRelative;
-            notes.push(
-                `Warning: Slim BuildRules IntelliSense update failed — restored previous csproj+sln. ` +
-                    `${(err as Error).message}`
-            );
-        } else {
-            // undefined → mergeSettings clears any prior defaultSolution
-            settings['dotnet.defaultSolution'] = undefined;
-            notes.push(
-                `Warning: Slim BuildRules IntelliSense csproj/sln failed — ` +
-                    `dotnet.defaultSolution was not set (C# LS would point at a missing solution). ` +
-                    `${(err as Error).message}`
-            );
-        }
+        notes.push(`Warning: could not write .clangd — ${(err as Error).message}`);
     }
 
-    const hasCc = await ensureCompileCommands(info.projectPath, info.projectName);
-    if (!hasCc) {
-        notes.push('No compile_commands found — generate VS Code project files in Unreal first.');
+    const cc = await ensureCompileCommands(info.projectPath, info.projectName);
+    if (cc === 'refreshed') {
+        // quiet success
+    } else if (cc === 'stale') {
+        notes.push(
+            'Root compile_commands.json exists but .vscode/compileCommands_*.json is missing — ' +
+                'clangd may be using a stale database. Generate VS Code project files in Unreal, then re-run Setup.'
+        );
+    } else if (cc === 'missing') {
+        notes.push(
+            'No compile_commands.json found — generate VS Code project files in Unreal, then re-run Setup.'
+        );
+    } else {
+        notes.push(
+            'compile_commands.json could not be refreshed — generate VS Code project files in Unreal, then re-run Setup.'
+        );
     }
-
-    return { settings, notes };
+    return notes;
 }

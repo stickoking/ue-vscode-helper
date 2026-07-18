@@ -22,6 +22,7 @@ export function extractCompilerPath(props: { configurations?: unknown }): string
 
 /**
  * VS Code profile: patch c_cpp_properties.json for Microsoft C++ IntelliSense.
+ * Called from Setup's hard phase after settings are written (still fully supported).
  * Does not enable clangd, does not write `.clangd`, and does not disable C_Cpp.
  * Never force Diagnostics.Suppress "*" — that belongs only to Cursor Engine PathMatch.
  */
@@ -109,18 +110,23 @@ export async function patchCppProperties(info: ProjectInfo): Promise<void> {
  * VS Code profile settings: keep Microsoft C++ as default; do not force clangd.on.
  * Explicitly re-enable C_Cpp after a prior Cursor setup (which sets them to disabled);
  * otherwise deep-merge would leave Microsoft IntelliSense off.
- * Also clear Cursor-only dotnet/omnisharp/terminal DOTNET_* keys left by a prior
- * Cursor Setup (undefined → mergeSettings deletes).
+ * Clear Cursor-only clangd/dotnet/omnisharp/terminal keys left by a prior Cursor Setup
+ * (undefined → mergeSettings deletes).
+ *
+ * `c_cpp_properties.json` is patched by `patchCppProperties` during Setup hard phase.
  */
 export function buildVsCodeSettings(): Record<string, any> {
     return {
         'clangd.enable': false,
+        'clangd.arguments': undefined,
         'C_Cpp.intelliSenseEngine': 'default',
         'C_Cpp.autocomplete': 'default',
         'C_Cpp.errorSquiggles': 'enabled',
         'C_Cpp.formatting': 'default',
         'dotnet.dotnetPath': undefined,
         'dotnet.defaultSolution': undefined,
+        'dotnet.backgroundAnalysis.compilerDiagnosticsScope': undefined,
+        'dotnet.backgroundAnalysis.analyzerDiagnosticsScope': undefined,
         'omnisharp.projectLoadTimeout': undefined,
         'omnisharp.enableRoslynAnalyzers': undefined,
         'omnisharp.enableEditorConfigSupport': undefined,
@@ -131,16 +137,5 @@ export function buildVsCodeSettings(): Record<string, any> {
             DOTNET_MULTILEVEL_LOOKUP: undefined,
             DOTNET_ROLL_FORWARD: undefined,
         },
-    };
-}
-
-export async function applyVsCodeProfile(info: ProjectInfo): Promise<{
-    settings: Record<string, any>;
-    notes: string[];
-}> {
-    await patchCppProperties(info);
-    return {
-        settings: buildVsCodeSettings(),
-        notes: [],
     };
 }

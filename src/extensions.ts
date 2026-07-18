@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { HostKind } from './host';
 import { resolveCodeWorkspaceFile } from './excludes';
-import { readJson, writeJson } from './util';
+import { readJsonc, writeJson } from './util';
 
 export type EnsureExtensionsMode = 'required' | 'requiredAndOptional' | 'off';
 
@@ -184,7 +184,7 @@ export async function rewriteWorkspaceRecommendations(
         vscode.workspace.getConfiguration('ue-vscode-helper').get<boolean>('promptPython') ?? true;
     const recommendations = hostRecommendations(host, promptPython);
 
-    const ws = await readJson<Record<string, any>>(workspaceFile);
+    const ws = await readJsonc<Record<string, any>>(workspaceFile);
     if (!ws.extensions || typeof ws.extensions !== 'object') {
         ws.extensions = {};
     }

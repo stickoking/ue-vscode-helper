@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { fileExists, readJson, writeJson, mergeSettings, normalizeSlashes } from './util';
+import { fileExists, readJsonc, writeJson, mergeSettings, normalizeSlashes } from './util';
 
 export interface ExcludeMaps {
     watcherExclude: Record<string, boolean>;
@@ -18,19 +18,39 @@ export const EXCLUDE_SETTING_KEYS = [
 ] as const;
 
 /**
- * Absolute path exclude keys (engine trees under Epic Games / drive letters).
- * Relative globs (e.g. star-star/Binaries/star-star) are preserved across Setup.
+ * Absolute path exclude keys (drive letters / POSIX roots).
+ * Relative globs (e.g. star-star/Binaries/star-star) are never treated as absolute.
  */
 export function isAbsoluteExcludeKey(key: string): boolean {
-    // Normalize so stale `C:\...` keys (pre-normalizeSlashes / manual edits) are
-    // treated as absolute and stripped when enginePath changes.
+    // Normalize so `C:\...` keys (pre-normalizeSlashes / manual edits) count as absolute.
     const n = key.replace(/\\/g, '/');
     return /^[A-Za-z]:\//.test(n) || (n.startsWith('/') && !n.startsWith('**/'));
 }
 
 /**
- * Merge one exclude map: drop stale absolute engine-path keys from existing,
- * keep relative/user globs, then apply the incoming map (current engine).
+ * Absolute excludes that look like UE engine install trees (safe to drop on Setup so a
+ * changed EngineAssociation does not leave stale watchers). User absolute paths that
+ * are unrelated to the engine are preserved.
+ */
+export function isEngineLikeAbsoluteExcludeKey(key: string): boolean {
+    if (!isAbsoluteExcludeKey(key)) {
+        return false;
+    }
+    const n = key.replace(/\\/g, '/');
+    return (
+        /\/Epic Games\//i.test(n) ||
+        /\/UE_\d+\.\d+/i.test(n) ||
+        /\/Engine\/(Binaries|Content|DerivedDataCache|Intermediate|Saved|Shaders|Plugins|Source)\b/i.test(
+            n
+        ) ||
+        /\/FeaturePacks\b/i.test(n) ||
+        /\/Templates\b/i.test(n)
+    );
+}
+
+/**
+ * Merge one exclude map: drop stale engine-like absolute keys from existing,
+ * keep relative globs and non-engine user absolute paths, then apply incoming.
  */
 export function mergeExcludeMap(
     existing: Record<string, boolean> | undefined,
@@ -39,7 +59,7 @@ export function mergeExcludeMap(
     const result: Record<string, boolean> = {};
     if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
         for (const [k, v] of Object.entries(existing)) {
-            if (!isAbsoluteExcludeKey(k)) {
+            if (!isEngineLikeAbsoluteExcludeKey(k)) {
                 result[k] = v;
             }
         }
@@ -181,7 +201,7 @@ export async function patchCodeWorkspace(
         return { workspaceFile: undefined, patched: false };
     }
 
-    const ws = await readJson<any>(workspaceFile);
+    const ws = await readJsonc<any>(workspaceFile);
     if (!ws.settings) {
         ws.settings = {};
     }
@@ -202,7 +222,7 @@ export async function patchVscodeSettings(
     let existing: Record<string, any> = {};
     if (await fileExists(settingsFile)) {
         try {
-            existing = await readJson(settingsFile);
+            existing = await readJsonc(settingsFile);
         } catch {
             existing = {};
         }

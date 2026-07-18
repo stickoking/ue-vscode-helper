@@ -1,7 +1,14 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { resolveHost, HostKind } from './host';
-import { findProjectInfo, ProjectInfo, resolveUprojectPath } from './engine';
+import {
+    buildRulesIntelliSenseCsproj,
+    buildRulesIntelliSenseSln,
+    buildRulesIntelliSenseSlnRelative,
+    findProjectInfo,
+    ProjectInfo,
+    resolveUprojectPath,
+} from './engine';
 import {
     excludeSettings,
     patchCodeWorkspace,
@@ -9,10 +16,16 @@ import {
     resolveCodeWorkspaceFile,
 } from './excludes';
 import { ensureExtensions, rewriteWorkspaceRecommendations } from './extensions';
-import { applyCursorProfile, restoreBuildRulesIntelliSense } from './profiles/cursor';
-import { applyVsCodeProfile, extractCompilerPath } from './profiles/vscode';
+import {
+    buildCursorSettings,
+    restoreBuildRulesIntelliSense,
+    writeBuildRulesIntelliSenseCsproj,
+    writeBuildRulesIntelliSenseSln,
+    writeCursorSecondaryArtifacts,
+} from './profiles/cursor';
+import { buildVsCodeSettings, patchCppProperties } from './profiles/vscode';
 import { initGitProject } from './git';
-import { fileExists, readJson } from './util';
+import { fileExists, HardDiskTransaction, readJsonc } from './util';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('✅ UE VS Code / Cursor Helper is now active!');
@@ -24,15 +37,13 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 /**
- * Validate targets that Setup will patch BEFORE writing clangd / BuildRules /
- * compile_commands. Prevents "Setup failed" after profile files already changed
- * on disk (e.g. invalid `.code-workspace` JSON).
+ * Validate JSONC targets Setup will merge BEFORE any hard-path disk writes.
  */
-async function preflightSetupTargets(info: ProjectInfo, host: HostKind): Promise<void> {
+async function preflightSetupTargets(info: ProjectInfo, _host: HostKind): Promise<void> {
     const workspaceFile = await resolveCodeWorkspaceFile(info.projectPath, info.projectName);
     if (workspaceFile) {
         try {
-            await readJson(workspaceFile);
+            await readJsonc(workspaceFile);
         } catch (err: unknown) {
             throw new Error(
                 `Invalid JSON in ${path.basename(workspaceFile)} — fix or regenerate the workspace file before Setup. ${
@@ -45,42 +56,128 @@ async function preflightSetupTargets(info: ProjectInfo, host: HostKind): Promise
     const settingsFile = path.join(info.projectPath, '.vscode', 'settings.json');
     if (await fileExists(settingsFile)) {
         try {
-            await readJson(settingsFile);
+            await readJsonc(settingsFile);
         } catch (err: unknown) {
             throw new Error(
                 `Invalid JSON in .vscode/settings.json — fix it before Setup. ${(err as Error).message}`
             );
         }
     }
+}
 
-    if (host === 'vscode') {
-        const propsFile = path.join(info.projectPath, '.vscode', 'c_cpp_properties.json');
-        if (!(await fileExists(propsFile))) {
-            throw new Error('c_cpp_properties.json not found. Generate project files in UE first!');
+/**
+ * HARD path (all-or-nothing): snapshot every file this phase may change, write
+ * BuildRules (Cursor) + settings/workspace/recommendations, roll EVERYTHING back
+ * together if any step throws.
+ *
+ * SOFT path (after hard commits): clangd / compile_commands / dotnet restore —
+ * notes only, never fails Setup and never needs rollback.
+ * VS Code `c_cpp_properties.json` is patched in the hard phase (still supported).
+ *
+ * This single boundary is what stops the endless Bugbot sibling comments about
+ * half-applied Setup.
+ */
+async function runHardSetupPhase(
+    info: ProjectInfo,
+    host: HostKind
+): Promise<{ settings: Record<string, any>; notes: string[] }> {
+    const notes: string[] = [];
+    const workspaceFile = await resolveCodeWorkspaceFile(info.projectPath, info.projectName);
+    const settingsFile = path.join(info.projectPath, '.vscode', 'settings.json');
+    const csprojPath = buildRulesIntelliSenseCsproj(info.projectPath, info.projectName);
+    const slnPath = buildRulesIntelliSenseSln(info.projectPath, info.projectName);
+    const cppPropsFile = path.join(info.projectPath, '.vscode', 'c_cpp_properties.json');
+
+    const tx = new HardDiskTransaction();
+    // Track ALL hard targets BEFORE any write — one rollback set, no shifting boundary.
+    await tx.track(settingsFile);
+    if (workspaceFile) {
+        await tx.track(workspaceFile);
+    }
+    if (host === 'cursor') {
+        await tx.track(csprojPath);
+        await tx.track(slnPath);
+    } else {
+        // VS Code still patches c_cpp_properties — tracked so a mid-write failure rolls back.
+        await tx.track(cppPropsFile);
+    }
+
+    const settings =
+        host === 'cursor' ? await buildCursorSettings(info) : buildVsCodeSettings();
+
+    try {
+        if (host === 'cursor') {
+            const slnRelative = buildRulesIntelliSenseSlnRelative(info.projectName);
+            try {
+                const { rulesCount } = await writeBuildRulesIntelliSenseCsproj(info);
+                await writeBuildRulesIntelliSenseSln(info);
+                settings['dotnet.defaultSolution'] = slnRelative;
+                notes.push(
+                    `Slim BuildRules IntelliSense csproj+sln written (${rulesCount} rules file(s); no UE5Rules). ` +
+                        `dotnet.defaultSolution → ${slnRelative}`
+                );
+            } catch (err: unknown) {
+                // Soft-fail BuildRules: restore ONLY csproj/sln (settings not written yet).
+                // Do not gate priorPair on rolling back unrelated tracked files.
+                const brOk = await tx.rollbackOnly([csprojPath, slnPath]);
+                const priorPair =
+                    brOk && (await fileExists(csprojPath)) && (await fileExists(slnPath));
+                if (priorPair) {
+                    settings['dotnet.defaultSolution'] = slnRelative;
+                    notes.push(
+                        `Warning: Slim BuildRules IntelliSense update failed — restored previous csproj+sln. ` +
+                            `${(err as Error).message}`
+                    );
+                } else {
+                    settings['dotnet.defaultSolution'] = undefined;
+                    notes.push(
+                        `Warning: Slim BuildRules IntelliSense csproj/sln failed — ` +
+                            `dotnet.defaultSolution was not set. ${(err as Error).message}` +
+                            (brOk ? '' : ' (BuildRules rollback incomplete)')
+                    );
+                }
+            }
         }
-        let props: unknown;
-        try {
-            props = await readJson(propsFile);
-        } catch (err: unknown) {
+
+        const shared = excludeSettings(info.enginePath);
+        const allSettings = { ...settings, ...shared };
+
+        const { patched } = await patchCodeWorkspace(
+            info.projectPath,
+            info.projectName,
+            allSettings
+        );
+        if (!patched) {
+            notes.push('.code-workspace not found — patched .vscode/settings.json only.');
+        }
+        await patchVscodeSettings(info.projectPath, allSettings);
+        await rewriteWorkspaceRecommendations(info.projectPath, info.projectName, host);
+
+        if (host === 'vscode') {
+            // Still fully supported — inside the hard transaction after settings.
+            // Missing/invalid UE-generated props: soft note + restore props snapshot only
+            // so Cursor leftover cleanup in settings still commits.
+            try {
+                await patchCppProperties(info);
+            } catch (err: unknown) {
+                await tx.rollbackOnly([cppPropsFile]);
+                notes.push(
+                    `Warning: c_cpp_properties.json not patched — ${(err as Error).message} ` +
+                        `VS Code host settings were still applied.`
+                );
+            }
+        }
+
+        return { settings: allSettings, notes };
+    } catch (err: unknown) {
+        const rolledBack = await tx.rollback();
+        const base = (err as Error).message;
+        if (!rolledBack) {
             throw new Error(
-                `Invalid JSON in c_cpp_properties.json — regenerate project files in UE. ${
-                    (err as Error).message
-                }`
+                `${base} (Setup also failed to fully roll back hard-path files — check .code-workspace / .vscode/settings.json / BuildRules IntelliSense files)`
             );
         }
-        if (!extractCompilerPath(props as { configurations?: unknown })) {
-            throw new Error(
-                'c_cpp_properties.json has no compilerPath. Generate VS Code project files in Unreal first, then re-run Setup.'
-            );
-        }
-        const vscodeDir = path.join(info.projectPath, '.vscode');
-        const ccProject = path.join(vscodeDir, `compileCommands_${info.projectName}.json`);
-        const ccDefault = path.join(vscodeDir, 'compileCommands_Default.json');
-        if (!(await fileExists(ccProject)) && !(await fileExists(ccDefault))) {
-            throw new Error(
-                'No compileCommands_*.json found under .vscode. Generate VS Code project files in Unreal first!'
-            );
-        }
+        throw err;
     }
 }
 
@@ -89,7 +186,6 @@ async function setupUnrealProject() {
         return vscode.window.showErrorMessage('Open your Unreal Engine project folder first.');
     }
 
-    // Resolve uproject first so cancel vs missing get distinct messages (not "none found").
     const uproject = await resolveUprojectPath();
     if (uproject.status === 'cancelled') {
         return;
@@ -108,8 +204,6 @@ async function setupUnrealProject() {
     const notes: string[] = [];
     let succeeded = false;
 
-    // Extensions FIRST (outside withProgress). First-run extension setup can overwrite
-    // configs if we patch settings before installs complete.
     const extNote = await ensureExtensions(host);
     if (extNote) {
         notes.push(extNote);
@@ -129,33 +223,17 @@ async function setupUnrealProject() {
                 progress.report({
                     message:
                         host === 'cursor'
-                            ? 'Writing clangd config & compile_commands...'
-                            : 'Applying VS Code C++ profile...',
+                            ? 'Writing BuildRules & settings...'
+                            : 'Patching VS Code settings...',
                 });
+                const hard = await runHardSetupPhase(info, host);
+                notes.push(...hard.notes);
 
-                const profileResult =
-                    host === 'cursor' ? await applyCursorProfile(info) : await applyVsCodeProfile(info);
-                notes.push(...profileResult.notes);
-
-                // Write IntelliSense + excludes BEFORE optional restore so C# settings
-                // are always on disk even if restore is slow/fails.
-                progress.report({ message: 'Patching excludes & settings...' });
-                const shared = excludeSettings(info.enginePath);
-                const allSettings = { ...profileResult.settings, ...shared };
-
-                const { patched } = await patchCodeWorkspace(
-                    info.projectPath,
-                    info.projectName,
-                    allSettings
-                );
-                if (!patched) {
-                    notes.push('.code-workspace not found — patched .vscode/settings.json only.');
-                }
-
-                await patchVscodeSettings(info.projectPath, allSettings);
-                await rewriteWorkspaceRecommendations(info.projectPath, info.projectName, host);
-
+                // SOFT phase — never throws into Setup failure / never rolls back hard path.
                 if (host === 'cursor') {
+                    progress.report({ message: 'Writing clangd & compile_commands...' });
+                    notes.push(...(await writeCursorSecondaryArtifacts(info)));
+
                     progress.report({
                         message: 'Restoring BuildRules IntelliSense (slim csproj)...',
                     });
@@ -176,7 +254,6 @@ async function setupUnrealProject() {
         return;
     }
 
-    // Single Reload prompt after extensions + config (outside withProgress).
     const noteText = notes.length > 0 ? `\n${notes.join('\n')}` : '';
     const reload = await vscode.window.showInformationMessage(
         `✅ ${hostLabel} IntelliSense & excludes patched for ${info.projectName}.${noteText}\n\nReload the window — required for IntelliSense settings to apply.`,
