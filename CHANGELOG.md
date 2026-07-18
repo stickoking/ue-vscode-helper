@@ -24,6 +24,7 @@ Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3
 - Soft phase after hard commit is isolated: restore/`getHelperSetting` (or other soft errors) become warnings; Setup still succeeds and offers Reload (soft-phase family — not soft-catch inside `restoreBuildRulesIntelliSense`)
 - Extension install waits until `getExtension` sees a satisfying id (`satisfiedBy` aware); outcomes are visible / pending (Reload may be needed) / failed (marketplace search) — no false “opened search” after a successful install command
 - Publish workflow: Open VSX and Marketplace both run even if the other fails (`continue-on-error`); job fails afterward if any attempted publish failed
+- Cursor `.clangd` PathMatch uses YAML single quotes so `\d` is not an unrecognized escape (`clangd-config`); Engine Suppress fragment parses again
 - Cursor `.clangd` no longer sets project-wide `Diagnostics.Suppress: ["*"]` — real C++ error squiggles show again; Engine PathMatch still fully suppressed
 - BuildRules IntelliSense `dotnet restore` no longer pipes undrained stdout (large NuGet output could fill the pipe and hang); stdout ignored, stderr drained for failure detail; 90s timeout + process-tree kill
 - VS Code Python checklist no longer treats Cursor-only `anysphere.cursorpyright` as satisfying Python; Cursor path still accepts cursorpyright **or** `ms-python.python`

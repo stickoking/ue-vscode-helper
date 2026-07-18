@@ -92,7 +92,9 @@ export async function buildCursorSettings(info: ProjectInfo): Promise<Record<str
  * Engine PathMatch: Suppress "*" + Index Skip (UE headers flood Problems otherwise).
  */
 export function buildClangdConfigContent(): string {
-    // PathMatch is YAML double-quoted; backslash escaping must match ObstacleAssault/.clangd.
+    // PathMatch must be YAML single-quoted: double-quoted `\d` is an unrecognized escape
+    // (clangd-config: "Unrecognized escape code"), which marks .clangd red and can drop
+    // the Engine Suppress fragment. Regex shape unchanged (Epic Games/UE_X.Y | UE_X.Y | Engine/Source).
     return `CompileFlags:
   CompilationDatabase: .
   Add:
@@ -111,7 +113,7 @@ Index:
 # Engine install trees only (not a game living under "Epic Games/...").
 # PathMatch requires Epic Games/UE_X.Y or UE_X.Y or Engine/Source — never bare "Epic Games".
 If:
-  PathMatch: ".*([/\\\\\\\\]Epic Games[/\\\\\\\\]UE_\\d+\\\\.\\d+[/\\\\\\\\]|[/\\\\\\\\]UE_\\d+\\\\.\\d+[/\\\\\\\\]|[/\\\\\\\\]Engine[/\\\\\\\\]Source[/\\\\\\\\]).*"
+  PathMatch: '.*([/\\\\]Epic Games[/\\\\]UE_\\d+\\.\\d+[/\\\\]|[/\\\\]UE_\\d+\\.\\d+[/\\\\]|[/\\\\]Engine[/\\\\]Source[/\\\\]).*'
 Index:
   Background: Skip
 Diagnostics:
