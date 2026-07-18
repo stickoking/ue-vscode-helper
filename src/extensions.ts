@@ -189,17 +189,26 @@ export async function rewriteWorkspaceRecommendations(
     }
     ws.extensions.recommendations = recommendations;
 
-    // Mark Cursor-avoid IDs as unwanted so the workspace does not nudge MS cpptools.
+    const unwanted: string[] = Array.isArray(ws.extensions.unwantedRecommendations)
+        ? [...ws.extensions.unwantedRecommendations]
+        : [];
+
+    // Cursor: mark MS cpptools unwanted. VS Code: remove those IDs so a prior
+    // Cursor Setup does not leave the required C++ extension marked unwanted.
     if (host === 'cursor') {
-        const unwanted: string[] = Array.isArray(ws.extensions.unwantedRecommendations)
-            ? [...ws.extensions.unwantedRecommendations]
-            : [];
         for (const id of CURSOR_AVOID_IDS) {
             if (!unwanted.includes(id)) {
                 unwanted.push(id);
             }
         }
         ws.extensions.unwantedRecommendations = unwanted;
+    } else {
+        const cleaned = unwanted.filter((id) => !CURSOR_AVOID_IDS.has(id));
+        if (cleaned.length > 0) {
+            ws.extensions.unwantedRecommendations = cleaned;
+        } else {
+            delete ws.extensions.unwantedRecommendations;
+        }
     }
 
     await writeJson(workspaceFile, ws);

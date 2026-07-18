@@ -23,17 +23,10 @@ export async function findProjectInfo(): Promise<ProjectInfo | undefined> {
     }
 
     const uprojectPath = uprojectFiles[0].fsPath;
-    // Prefer the folder that contains the .uproject (multi-root safe) — not always folders[0].
-    // Unreal projects keep .uproject at the project root, so dirname is the game root.
-    const containing = vscode.workspace.workspaceFolders.find((f) => {
-        const root = f.uri.fsPath.replace(/[/\\]+$/, '');
-        return (
-            uprojectPath === root ||
-            uprojectPath.startsWith(root + path.sep) ||
-            uprojectPath.startsWith(root + '/')
-        );
-    });
-    const projectPath = containing?.uri.fsPath ?? path.dirname(uprojectPath);
+    // Always the directory that contains the .uproject — never a parent workspace
+    // folder. Opening a monorepo parent with Games/MyGame/*.uproject must still
+    // patch Games/MyGame/.vscode, not the repo root.
+    const projectPath = path.dirname(uprojectPath);
     const projectName = path.basename(uprojectPath, '.uproject');
     const enginePath = await resolveEnginePath(uprojectPath);
 

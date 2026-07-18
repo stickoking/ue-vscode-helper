@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { execFile } from 'child_process';
+import { findProjectInfo } from './engine';
 import { fileExists } from './util';
 
 function runGit(args: string[], cwd: string): Promise<void> {
@@ -24,12 +25,16 @@ function isSafeGitRemoteUrl(url: string): boolean {
 }
 
 export async function initGitProject(): Promise<void> {
-    const workspace = vscode.workspace.workspaceFolders?.[0];
-    if (!workspace) {
-        return void vscode.window.showErrorMessage('Open your Unreal project first.');
+    // Same root as Setup: directory containing the .uproject (not folders[0]).
+    const info = await findProjectInfo();
+    if (!info) {
+        const hasFolder = !!vscode.workspace.workspaceFolders?.[0];
+        return void vscode.window.showErrorMessage(
+            hasFolder ? 'No .uproject file found.' : 'Open your Unreal project first.'
+        );
     }
 
-    const projectPath = workspace.uri.fsPath;
+    const projectPath = info.projectPath;
     const gitDir = path.join(projectPath, '.git');
 
     if (await fileExists(gitDir)) {

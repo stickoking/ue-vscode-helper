@@ -22,7 +22,10 @@ export const EXCLUDE_SETTING_KEYS = [
  * Relative globs (e.g. star-star/Binaries/star-star) are preserved across Setup.
  */
 export function isAbsoluteExcludeKey(key: string): boolean {
-    return /^[A-Za-z]:\//.test(key) || (key.startsWith('/') && !key.startsWith('**/'));
+    // Normalize so stale `C:\...` keys (pre-normalizeSlashes / manual edits) are
+    // treated as absolute and stripped when enginePath changes.
+    const n = key.replace(/\\/g, '/');
+    return /^[A-Za-z]:\//.test(n) || (n.startsWith('/') && !n.startsWith('**/'));
 }
 
 /**

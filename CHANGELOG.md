@@ -2,6 +2,15 @@
 
 All notable changes to the "ue-vscode-helper" extension will be documented in this file.
 
+## [1.1.3] - 2026-07-18
+
+### Fixed
+- `findProjectInfo` always uses `dirname(.uproject)` as the project root (nested uproject under a parent workspace folder no longer patches the wrong tree)
+- Git init uses the same `.uproject` root as Setup (not `workspaceFolders[0]`)
+- VS Code Setup removes `ms-vscode.cpptools` from `extensions.unwantedRecommendations` left by a prior Cursor Setup
+- `isAbsoluteExcludeKey` treats Windows `C:\...` exclude keys as absolute (stale backslash engine paths are stripped)
+- VS Code profile clears Cursor-only `dotnet.*` / `omnisharp.*` / terminal `DOTNET_*` keys so deep-merge does not leave them after a host switch
+
 ## [1.1.2] - 2026-07-18
 
 ### Fixed
