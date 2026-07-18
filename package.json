@@ -2,7 +2,7 @@
   "name": "ue-vscode-helper",
   "displayName": "Unreal Engine VS Code / Cursor Helper",
   "description": "Dual-host Unreal IntelliSense setup for VS Code (Microsoft C++) and Cursor (clangd + slim BuildRules IntelliSense), plus excludes and Git init",
-  "version": "0.2.7",
+  "version": "0.3.0",
   "publisher": "stickoking",
   "repository": {
     "type": "git",
@@ -56,6 +56,21 @@
           "type": "boolean",
           "default": true,
           "description": "On Cursor setup, run UE-bundled `dotnet restore` on the slim `.vscode/<Project>.BuildRules.IntelliSense.csproj` (wrapped by a sibling .sln as dotnet.defaultSolution — not the full Intermediate ModuleRules). Timeout 90s; non-fatal. Avoids indexing thousands of Engine Build.cs via UE5Rules."
+        },
+        "ue-vscode-helper.ensureExtensions": {
+          "type": "string",
+          "enum": [
+            "required",
+            "requiredAndOptional",
+            "off"
+          ],
+          "default": "requiredAndOptional",
+          "description": "During Setup, soft-prompt to install host-appropriate extensions before patching configs. required = IntelliSense core only; requiredAndOptional = full stack; off = skip. Never hard-fails Setup. Does not use package.json extensionDependencies."
+        },
+        "ue-vscode-helper.promptPython": {
+          "type": "boolean",
+          "default": true,
+          "description": "When ensureExtensions is not off, include a Python extension in the checklist (even on required mode). Cursor prefers anysphere.cursorpyright; either that or ms-python.python counts as satisfied. VS Code uses ms-python.python."
         }
       }
     }

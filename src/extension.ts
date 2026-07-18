@@ -2,11 +2,8 @@ import * as vscode from 'vscode';
 import { resolveHost } from './host';
 import { findProjectInfo } from './engine';
 import { excludeSettings, patchCodeWorkspace, patchVscodeSettings } from './excludes';
-import {
-    applyCursorProfile,
-    hintClangdExtension,
-    restoreBuildRulesIntelliSense,
-} from './profiles/cursor';
+import { ensureExtensions, rewriteWorkspaceRecommendations } from './extensions';
+import { applyCursorProfile, restoreBuildRulesIntelliSense } from './profiles/cursor';
 import { applyVsCodeProfile } from './profiles/vscode';
 import { initGitProject } from './git';
 
@@ -32,6 +29,13 @@ async function setupUnrealProject() {
     const hostLabel = host === 'cursor' ? 'Cursor' : 'VS Code';
     const notes: string[] = [];
     let succeeded = false;
+
+    // Extensions FIRST (outside withProgress). First-run extension setup can overwrite
+    // configs if we patch settings before installs complete.
+    const extNote = await ensureExtensions(host);
+    if (extNote) {
+        notes.push(extNote);
+    }
 
     await vscode.window.withProgress(
         {
@@ -64,6 +68,7 @@ async function setupUnrealProject() {
                 }
 
                 await patchVscodeSettings(info.projectPath, allSettings);
+                await rewriteWorkspaceRecommendations(info.projectPath, host);
 
                 if (host === 'cursor') {
                     progress.report({
@@ -86,13 +91,7 @@ async function setupUnrealProject() {
         return;
     }
 
-    // Dialogs after progress closes so the notification never looks "stuck" on a modal.
-    if (host === 'cursor') {
-        await hintClangdExtension();
-    }
-
-    // Single prompt with actions (outside withProgress). A buttonless success toast
-    // alone is easy to dismiss without ever seeing a follow-up reload dialog.
+    // Single Reload prompt after extensions + config (outside withProgress).
     const noteText = notes.length > 0 ? `\n${notes.join('\n')}` : '';
     const reload = await vscode.window.showInformationMessage(
         `✅ ${hostLabel} IntelliSense & excludes patched for ${info.projectName}.${noteText}\n\nReload the window — required for IntelliSense settings to apply.`,

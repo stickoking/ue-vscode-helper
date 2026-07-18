@@ -2,6 +2,19 @@
 
 All notable changes to the "ue-vscode-helper" extension will be documented in this file.
 
+## [0.3.0] - 2026-07-18
+
+### Added
+- **Ensure extensions** (`src/extensions.ts`): soft Install/Dismiss for missing host extensions **before** profile/config patch; awaits installs; marketplace search fallback; never hard-fails Setup
+- Settings `ue-vscode-helper.ensureExtensions` (`required` \| `requiredAndOptional` \| `off`, default **requiredAndOptional**) and `ue-vscode-helper.promptPython` (default **true**)
+- Host matrices: Cursor required clangd + `anysphere.csharp`; optional .NET runtime + `anysphere.cpptools` + Python; VS Code required `ms-vscode.cpptools` + `ms-dotnettools.csharp`; optional csdevkit / .NET runtime / Python / CMake Tools
+- Rewrites `.code-workspace` `extensions.recommendations` (host-aware); marks `ms-vscode.cpptools` as unwanted on Cursor
+
+### Changed
+- Setup order locked: **extensions → config patch → single Reload Window**
+- Removed standalone `hintClangdExtension` (folded into ensure-extensions)
+- Skill/rule/README mark ensure-extensions as **IMPLEMENTED**
+
 ## [0.2.7] - 2026-07-17
 
 ### Added

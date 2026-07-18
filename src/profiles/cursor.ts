@@ -16,8 +16,6 @@ import {
 import { fileExists } from '../util';
 import { createHash } from 'crypto';
 
-const CLANGD_EXTENSION_ID = 'llvm-vs-code-extensions.vscode-clangd';
-
 /** Max wait for slim BuildRules IntelliSense `dotnet restore` — never block setup forever. */
 export const BUILD_RULES_RESTORE_TIMEOUT_MS = 90_000;
 
@@ -469,22 +467,6 @@ export async function restoreModuleRules(
     timeoutMs: number = BUILD_RULES_RESTORE_TIMEOUT_MS
 ): Promise<string | undefined> {
     return restoreBuildRulesIntelliSense(info, timeoutMs);
-}
-
-export async function hintClangdExtension(): Promise<void> {
-    const ext = vscode.extensions.getExtension(CLANGD_EXTENSION_ID);
-    if (ext) {
-        return;
-    }
-
-    const choice = await vscode.window.showWarningMessage(
-        'clangd extension is not installed. Cursor IntelliSense needs llvm-vs-code-extensions.vscode-clangd.',
-        'Install clangd',
-        'Dismiss'
-    );
-    if (choice === 'Install clangd') {
-        await vscode.commands.executeCommand('workbench.extensions.installExtension', CLANGD_EXTENSION_ID);
-    }
 }
 
 /**
