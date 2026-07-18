@@ -56,6 +56,8 @@ cursor --install-extension ue-vscode-helper-0.3.0.vsix
 
 Same VSIX works in VS Code via `code --install-extension ue-vscode-helper-0.3.0.vsix`.
 
+> **CLI deprecation noise (harmless):** `cursor --install-extension` may print Node `[DEP0040] punycode` and/or `[DEP0169] url.parse()` warnings. Those come from **Cursor’s host CLI** (`resources/app/out/cli.js` / `cliProcessMain.js` → bundled `node-fetch` / `whatwg-url`), not from this extension. The VSIX has no runtime deps and no `punycode`/`url.parse` usage. The same install still reports success; VS Code’s `code` CLI can show `url.parse` noise too. **Not a marketplace blocker** and not fixable inside this repo.
+
 ## Extension Settings
 
 | Setting | Default | Description |

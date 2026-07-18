@@ -23,6 +23,11 @@ Thank you for wanting to contribute! 🎉
 - Use meaningful variable names
 - Add comments where the logic is tricky
 
+## Packaging / publish notes
+
+- Package with `npm run vsix` (`@vscode/vsce`). The published VSIX is webpack-only (`dist/extension.js`); there are no runtime `dependencies`.
+- Ignore `[DEP0040] punycode` / `[DEP0169] url.parse()` when running `cursor --install-extension …vsix` — those warnings are from Cursor’s CLI (and partly VS Code’s), not the extension. Do not block release on them.
+
 ## Questions?
 
 Just open an issue or ask in the PR — I'm happy to help!
