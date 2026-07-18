@@ -12,25 +12,101 @@ export interface ProjectInfo {
     enginePath: string;
 }
 
-export async function findProjectInfo(): Promise<ProjectInfo | undefined> {
+/**
+ * Resolve which `.uproject` to set up.
+ * Never use findFiles(..., 1) — that picks an arbitrary match in multi-game repos.
+ * Prefer: active-editor ancestry (deepest) → unique workspace-folder root → QuickPick.
+ */
+export type UprojectResolveResult =
+    | { status: 'found'; uprojectPath: string }
+    | { status: 'none' }
+    | { status: 'cancelled' };
+
+export async function resolveUprojectPath(): Promise<UprojectResolveResult> {
+    const uprojectFiles = await vscode.workspace.findFiles(
+        '**/*.uproject',
+        '**/node_modules/**',
+        50
+    );
+    if (uprojectFiles.length === 0) {
+        return { status: 'none' };
+    }
+    if (uprojectFiles.length === 1) {
+        return { status: 'found', uprojectPath: uprojectFiles[0].fsPath };
+    }
+
+    const paths = uprojectFiles.map((u) => u.fsPath);
+
+    // Active editor under a game root → deepest containing .uproject wins.
+    const activePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+    if (activePath) {
+        const containing = paths
+            .filter((uprojectPath) => {
+                const root = path.dirname(uprojectPath);
+                const rel = path.relative(root, activePath);
+                return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+            })
+            .sort((a, b) => path.dirname(b).length - path.dirname(a).length);
+        if (containing.length > 0) {
+            return { status: 'found', uprojectPath: containing[0] };
+        }
+    }
+
+    // Unique .uproject sitting directly in a workspace folder root.
+    const folderRoots = (vscode.workspace.workspaceFolders ?? []).map((f) =>
+        path.normalize(f.uri.fsPath)
+    );
+    const atFolderRoot = paths.filter((uprojectPath) =>
+        folderRoots.includes(path.normalize(path.dirname(uprojectPath)))
+    );
+    if (atFolderRoot.length === 1) {
+        return { status: 'found', uprojectPath: atFolderRoot[0] };
+    }
+
+    const pickFrom = atFolderRoot.length > 1 ? atFolderRoot : paths;
+    const picked = await vscode.window.showQuickPick(
+        pickFrom.map((uprojectPath) => ({
+            label: path.basename(uprojectPath, '.uproject'),
+            description: path.dirname(uprojectPath),
+            uprojectPath,
+        })),
+        {
+            placeHolder: 'Multiple .uproject files found — choose which project to set up',
+            ignoreFocusOut: true,
+        }
+    );
+    if (!picked) {
+        return { status: 'cancelled' };
+    }
+    return { status: 'found', uprojectPath: picked.uprojectPath };
+}
+
+/**
+ * @param uprojectPath Optional explicit `.uproject` (avoids a second QuickPick when
+ * Setup already called `resolveUprojectPath`).
+ */
+export async function findProjectInfo(uprojectPath?: string): Promise<ProjectInfo | undefined> {
     if (!vscode.workspace.workspaceFolders?.length) {
         return undefined;
     }
 
-    const uprojectFiles = await vscode.workspace.findFiles('**/*.uproject', '**/node_modules/**', 1);
-    if (uprojectFiles.length === 0) {
-        return undefined;
+    let resolvedPath = uprojectPath;
+    if (!resolvedPath) {
+        const resolved = await resolveUprojectPath();
+        if (resolved.status !== 'found') {
+            return undefined;
+        }
+        resolvedPath = resolved.uprojectPath;
     }
 
-    const uprojectPath = uprojectFiles[0].fsPath;
     // Always the directory that contains the .uproject — never a parent workspace
     // folder. Opening a monorepo parent with Games/MyGame/*.uproject must still
     // patch Games/MyGame/.vscode, not the repo root.
-    const projectPath = path.dirname(uprojectPath);
-    const projectName = path.basename(uprojectPath, '.uproject');
-    const enginePath = await resolveEnginePath(uprojectPath);
+    const projectPath = path.dirname(resolvedPath);
+    const projectName = path.basename(resolvedPath, '.uproject');
+    const enginePath = await resolveEnginePath(resolvedPath);
 
-    return { projectPath, projectName, uprojectPath, enginePath };
+    return { projectPath, projectName, uprojectPath: resolvedPath, enginePath };
 }
 
 /**

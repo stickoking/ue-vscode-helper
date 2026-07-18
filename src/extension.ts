@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { resolveHost, HostKind } from './host';
-import { findProjectInfo, ProjectInfo } from './engine';
+import { findProjectInfo, ProjectInfo, resolveUprojectPath } from './engine';
 import {
     excludeSettings,
     patchCodeWorkspace,
@@ -10,7 +10,7 @@ import {
 } from './excludes';
 import { ensureExtensions, rewriteWorkspaceRecommendations } from './extensions';
 import { applyCursorProfile, restoreBuildRulesIntelliSense } from './profiles/cursor';
-import { applyVsCodeProfile } from './profiles/vscode';
+import { applyVsCodeProfile, extractCompilerPath } from './profiles/vscode';
 import { initGitProject } from './git';
 import { fileExists, readJson } from './util';
 
@@ -58,8 +58,9 @@ async function preflightSetupTargets(info: ProjectInfo, host: HostKind): Promise
         if (!(await fileExists(propsFile))) {
             throw new Error('c_cpp_properties.json not found. Generate project files in UE first!');
         }
+        let props: unknown;
         try {
-            await readJson(propsFile);
+            props = await readJson(propsFile);
         } catch (err: unknown) {
             throw new Error(
                 `Invalid JSON in c_cpp_properties.json — regenerate project files in UE. ${
@@ -67,16 +68,39 @@ async function preflightSetupTargets(info: ProjectInfo, host: HostKind): Promise
                 }`
             );
         }
+        if (!extractCompilerPath(props as { configurations?: unknown })) {
+            throw new Error(
+                'c_cpp_properties.json has no compilerPath. Generate VS Code project files in Unreal first, then re-run Setup.'
+            );
+        }
+        const vscodeDir = path.join(info.projectPath, '.vscode');
+        const ccProject = path.join(vscodeDir, `compileCommands_${info.projectName}.json`);
+        const ccDefault = path.join(vscodeDir, 'compileCommands_Default.json');
+        if (!(await fileExists(ccProject)) && !(await fileExists(ccDefault))) {
+            throw new Error(
+                'No compileCommands_*.json found under .vscode. Generate VS Code project files in Unreal first!'
+            );
+        }
     }
 }
 
 async function setupUnrealProject() {
-    const info = await findProjectInfo();
+    if (!vscode.workspace.workspaceFolders?.length) {
+        return vscode.window.showErrorMessage('Open your Unreal Engine project folder first.');
+    }
+
+    // Resolve uproject first so cancel vs missing get distinct messages (not "none found").
+    const uproject = await resolveUprojectPath();
+    if (uproject.status === 'cancelled') {
+        return;
+    }
+    if (uproject.status === 'none') {
+        return vscode.window.showErrorMessage('No .uproject file found.');
+    }
+
+    const info = await findProjectInfo(uproject.uprojectPath);
     if (!info) {
-        const hasFolder = !!vscode.workspace.workspaceFolders?.[0];
-        return vscode.window.showErrorMessage(
-            hasFolder ? 'No .uproject file found.' : 'Open your Unreal Engine project folder first.'
-        );
+        return vscode.window.showErrorMessage('No .uproject file found.');
     }
 
     const host = resolveHost();

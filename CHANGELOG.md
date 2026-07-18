@@ -2,40 +2,6 @@
 
 All notable changes to the "ue-vscode-helper" extension will be documented in this file.
 
-## [1.1.4] - 2026-07-18
-
-### Fixed
-- Slim BuildRules: csproj+sln writes are transactional — on failure restore each file to its pre-write snapshot only (no second delete pass); keep `dotnet.defaultSolution` only when a complete prior pair is verified on disk
-- Resolve `.code-workspace` by `.uproject` `projectName`, then folder basename (no arbitrary `*.code-workspace` fallback that could patch the wrong file)
-- Setup preflights `.code-workspace` / `.vscode/settings.json` (and VS Code `c_cpp_properties.json`) JSON before writing clangd / BuildRules / compile_commands, so a later parse failure does not leave profile files half-applied
-
-## [1.1.3] - 2026-07-18
-
-### Fixed
-- `findProjectInfo` always uses `dirname(.uproject)` as the project root (nested uproject under a parent workspace folder no longer patches the wrong tree)
-- Git init uses the same `.uproject` root as Setup (not `workspaceFolders[0]`)
-- VS Code Setup removes `ms-vscode.cpptools` from `extensions.unwantedRecommendations` left by a prior Cursor Setup
-- `isAbsoluteExcludeKey` treats Windows `C:\...` exclude keys as absolute (stale backslash engine paths are stripped)
-- VS Code profile clears Cursor-only `dotnet.*` / `omnisharp.*` / terminal `DOTNET_*` keys so deep-merge does not leave them after a host switch
-
-## [1.1.2] - 2026-07-18
-
-### Fixed
-- Exclude maps no longer keep stale absolute engine-path keys after `enginePath` / `EngineAssociation` changes (relative user globs preserved)
-- VS Code profile re-enables Microsoft `C_Cpp.*` after a prior Cursor setup (no longer leaves IntelliSense disabled)
-- Slim BuildRules: if `.sln` write fails after `.csproj`, delete the orphan csproj and clear `dotnet.defaultSolution`
-- Clear stale `dotnet.dotnetPath` / terminal `DOTNET_*` env when UE-bundled DotNet is missing
-- Git remote add uses `execFile` argv (no shell interpolation) + URL shape validation
-- `findProjectInfo` uses the workspace folder that contains the `.uproject` (multi-root safe)
-
-## [1.1.1] - 2026-07-18
-
-### Fixed
-- Only set `dotnet.defaultSolution` after slim BuildRules csproj+sln write succeeds; on failure omit/clear it and warn (avoids C# LS pointing at a missing solution)
-- Always refresh root `compile_commands.json` from `.vscode/compileCommands_*` when the source exists (no longer early-return on a stale root file after UE regen)
-- Pick highest UE-bundled DotNet version folder with numeric (semver-like) sort so `10.0` wins over `9.0`
-- Generate `UE_5_N_OR_LATER` DefineConstants through the detected engine minor (e.g. `UE_5.8` → 0..8), not a hard cap at 20
-
 ## [1.1.0] - 2026-07-18
 
 Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3.x).
@@ -45,7 +11,7 @@ Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3
 - **Ensure extensions** (`src/extensions.ts`): soft Install/Dismiss for missing host extensions **before** profile/config patch; awaits installs; marketplace search fallback; never hard-fails Setup
 - Settings `ue-vscode-helper.ensureExtensions` (`required` \| `requiredAndOptional` \| `off`, default **requiredAndOptional**) and `ue-vscode-helper.promptPython` (default **true**)
 - Host matrices: Cursor required clangd + `anysphere.csharp`; optional .NET runtime + `anysphere.cpptools` + Python; VS Code required `ms-vscode.cpptools` + `ms-dotnettools.csharp`; optional csdevkit / .NET runtime / Python / CMake Tools
-- Rewrites `.code-workspace` `extensions.recommendations` (host-aware); marks `ms-vscode.cpptools` as unwanted on Cursor
+- Rewrites `.code-workspace` `extensions.recommendations` (host-aware); marks `ms-vscode.cpptools` as unwanted on Cursor; clears those unwanted IDs on VS Code after a prior Cursor Setup
 - Slim `.vscode/<Project>.BuildRules.IntelliSense.csproj` + sibling `.sln` for Build.cs / Target.cs IntelliSense (no UE5Rules); `dotnet.defaultSolution` must point at the **`.sln`**
 - Engine path from `.uproject` `EngineAssociation`; mirror excludes/settings to `.code-workspace` and `.vscode/settings.json`; write `.clangd` + root `compile_commands.json` on Cursor
 - Git init command retained (Unreal `.gitignore`, confirmation guards)
@@ -55,6 +21,16 @@ Marketplace release consolidating develop work since 1.0.x (internal 0.2.x–0.3
 - BuildRules IntelliSense `dotnet restore` no longer pipes undrained stdout (large NuGet output could fill the pipe and hang); stdout ignored, stderr drained for failure detail; 90s timeout + process-tree kill unchanged
 - VS Code Python checklist no longer treats Cursor-only `anysphere.cursorpyright` as satisfying Python; Cursor path still accepts cursorpyright **or** `ms-python.python`
 - Setup progress / Reload Window UX: dialogs outside `withProgress`; always prompt Reload after success; restore timeout non-fatal
+- Slim BuildRules: set `dotnet.defaultSolution` only after csproj+sln succeed; on failure restore each file to its pre-write snapshot (no orphan half-state); keep the pointer only when a complete prior pair is verified
+- Always refresh root `compile_commands.json` from `.vscode/compileCommands_*` when the source exists
+- Pick highest UE-bundled DotNet version folder with numeric sort (`10.0` over `9.0`); clear stale `dotnet.dotnetPath` / terminal `DOTNET_*` when DotNet is missing
+- `UE_5_N_OR_LATER` DefineConstants through the detected engine minor (not a hard cap at 20)
+- Exclude maps drop stale absolute engine-path keys (including Windows `C:\...`) when `enginePath` changes; relative globs preserved
+- Resolve `.code-workspace` by `.uproject` `projectName`, then folder basename
+- Setup preflights workspace/settings/`c_cpp_properties` JSON (and VS Code `compilerPath` + `compileCommands_*.json`) before profile disk writes
+- `findProjectInfo` uses `dirname(.uproject)`; multi-`.uproject` → active-editor ancestry / workspace-folder root / QuickPick (never arbitrary first match)
+- Git init uses the same `.uproject` root as Setup; remote add via `execFile` + URL validation
+- VS Code profile re-enables `C_Cpp.*`, clears Cursor-only `dotnet.*` / `omnisharp.*` / terminal `DOTNET_*`, requires real `compilerPath`, and uses absolute `<uproject>/Source` (not `${workspaceFolder}/Source`)
 
 ### Changed
 - Setup order locked: **extensions → config patch → single Reload Window**

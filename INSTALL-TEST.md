@@ -1,4 +1,4 @@
-# Install & smoke-test (1.1.4)
+# Install & smoke-test (1.1.0)
 
 ## Install
 
@@ -6,10 +6,10 @@ From this repo root (after `npm run vsix` or with the built VSIX):
 
 ```powershell
 # Cursor (required for this project)
-cursor --install-extension .\ue-vscode-helper-1.1.4.vsix
+cursor --install-extension .\ue-vscode-helper-1.1.0.vsix
 
 # Optional: also install into VS Code
-code --install-extension .\ue-vscode-helper-1.1.4.vsix
+code --install-extension .\ue-vscode-helper-1.1.0.vsix
 ```
 
 Or run:

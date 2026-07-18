@@ -2,6 +2,24 @@ import * as path from 'path';
 import { ProjectInfo } from '../engine';
 import { fileExists, readJson, writeJson, normalizeSlashes } from '../util';
 
+/** Pull a non-empty compilerPath from any existing c_cpp_properties configuration. */
+export function extractCompilerPath(props: { configurations?: unknown }): string | undefined {
+    const configs = Array.isArray(props.configurations) ? props.configurations : [];
+    for (const cfg of configs) {
+        if (
+            cfg &&
+            typeof cfg === 'object' &&
+            typeof (cfg as { compilerPath?: unknown }).compilerPath === 'string'
+        ) {
+            const value = ((cfg as { compilerPath: string }).compilerPath || '').trim();
+            if (value) {
+                return value;
+            }
+        }
+    }
+    return undefined;
+}
+
 /**
  * VS Code profile: patch c_cpp_properties.json for Microsoft C++ IntelliSense.
  * Does not enable clangd, does not write `.clangd`, and does not disable C_Cpp.
@@ -17,9 +35,23 @@ export async function patchCppProperties(info: ProjectInfo): Promise<void> {
     }
 
     const props = await readJson<any>(propsFile);
+
+    // Require a real compilerPath — writing undefined makes MS C++ fail silently.
+    const compilerPath = extractCompilerPath(props);
+    if (!compilerPath) {
+        throw new Error(
+            'c_cpp_properties.json has no compilerPath. Generate VS Code project files in Unreal first, then re-run Setup.'
+        );
+    }
+
     let compileCommands = path.join(vscodeDir, `compileCommands_${projectName}.json`);
     if (!(await fileExists(compileCommands))) {
         compileCommands = path.join(vscodeDir, 'compileCommands_Default.json');
+    }
+    if (!(await fileExists(compileCommands))) {
+        throw new Error(
+            'No compileCommands_*.json found under .vscode. Generate VS Code project files in Unreal first!'
+        );
     }
 
     const definitionsHeader = normalizeSlashes(
@@ -50,7 +82,6 @@ export async function patchCppProperties(info: ProjectInfo): Promise<void> {
 
     const projectNorm = normalizeSlashes(projectPath);
     const engineNorm = normalizeSlashes(enginePath);
-    const compilerPath = props.configurations?.[0]?.compilerPath;
 
     const newConfig = {
         name: `${projectName}Editor Win64 Development`,
@@ -60,7 +91,8 @@ export async function patchCppProperties(info: ProjectInfo): Promise<void> {
         intelliSenseMode: 'msvc-x64',
         compileCommands: normalizeSlashes(compileCommands),
         includePath: [
-            '${workspaceFolder}/Source',
+            // Absolute uproject Source — NOT ${workspaceFolder}/Source (wrong in monorepos).
+            `${projectNorm}/Source`,
             `${projectNorm}/Intermediate/Build/Win64/UnrealEditor/Inc/${projectName}/UHT`,
             sharedDefsDir,
             `${engineNorm}/Engine/Intermediate/Build/Win64/UnrealEditor/Inc/**`,
