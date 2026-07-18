@@ -2,6 +2,13 @@
 
 All notable changes to the "ue-vscode-helper" extension will be documented in this file.
 
+## [1.1.4] - 2026-07-18
+
+### Fixed
+- Slim BuildRules: csproj+sln writes are transactional — on failure restore each file to its pre-write snapshot only (no second delete pass); keep `dotnet.defaultSolution` only when a complete prior pair is verified on disk
+- Resolve `.code-workspace` by `.uproject` `projectName`, then folder basename (no arbitrary `*.code-workspace` fallback that could patch the wrong file)
+- Setup preflights `.code-workspace` / `.vscode/settings.json` (and VS Code `c_cpp_properties.json`) JSON before writing clangd / BuildRules / compile_commands, so a later parse failure does not leave profile files half-applied
+
 ## [1.1.3] - 2026-07-18
 
 ### Fixed

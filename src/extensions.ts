@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { HostKind } from './host';
-import { fileExists, readJson, writeJson } from './util';
+import { resolveCodeWorkspaceFile } from './excludes';
+import { readJson, writeJson } from './util';
 
 export type EnsureExtensionsMode = 'required' | 'requiredAndOptional' | 'off';
 
@@ -172,10 +172,11 @@ export async function ensureExtensions(host: HostKind): Promise<string | undefin
 /** Rewrite `.code-workspace` `extensions.recommendations` to the host-aware list. */
 export async function rewriteWorkspaceRecommendations(
     projectPath: string,
+    projectName: string,
     host: HostKind
 ): Promise<boolean> {
-    const workspaceFile = path.join(projectPath, `${path.basename(projectPath)}.code-workspace`);
-    if (!(await fileExists(workspaceFile))) {
+    const workspaceFile = await resolveCodeWorkspaceFile(projectPath, projectName);
+    if (!workspaceFile) {
         return false;
     }
 

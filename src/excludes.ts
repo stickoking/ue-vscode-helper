@@ -142,13 +142,42 @@ export function excludeSettings(enginePath: string): Record<string, any> {
     };
 }
 
+/**
+ * Resolve Unreal's `.code-workspace` path.
+ * UE names it `<ProjectName>.code-workspace` from the `.uproject` base name — which
+ * can differ from the folder basename. Prefer `projectName`, then folder basename.
+ * Do not fall back to an arbitrary `*.code-workspace` (could patch the wrong file).
+ */
+export async function resolveCodeWorkspaceFile(
+    projectPath: string,
+    projectName: string
+): Promise<string | undefined> {
+    const candidates = [
+        path.join(projectPath, `${projectName}.code-workspace`),
+        path.join(projectPath, `${path.basename(projectPath)}.code-workspace`),
+    ];
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+        const key = candidate.toLowerCase();
+        if (seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        if (await fileExists(candidate)) {
+            return candidate;
+        }
+    }
+    return undefined;
+}
+
 /** Merge settings into .code-workspace (creates warning if missing). */
 export async function patchCodeWorkspace(
     projectPath: string,
+    projectName: string,
     settingsPatch: Record<string, any>
 ): Promise<{ workspaceFile: string | undefined; patched: boolean }> {
-    const workspaceFile = path.join(projectPath, `${path.basename(projectPath)}.code-workspace`);
-    if (!(await fileExists(workspaceFile))) {
+    const workspaceFile = await resolveCodeWorkspaceFile(projectPath, projectName);
+    if (!workspaceFile) {
         return { workspaceFile: undefined, patched: false };
     }
 

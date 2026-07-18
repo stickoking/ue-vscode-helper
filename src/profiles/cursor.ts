@@ -471,13 +471,49 @@ export async function restoreModuleRules(
     return restoreBuildRulesIntelliSense(info, timeoutMs);
 }
 
+/** Snapshot a file for transactional restore (`null` = did not exist / unreadable). */
+async function readFileSnapshot(filePath: string): Promise<string | null> {
+    try {
+        return await fs.readFile(filePath, 'utf8');
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Restore a file to a prior snapshot (`null` → delete if present).
+ * Returns false if the rollback could not be completed.
+ */
+async function restoreFileSnapshot(filePath: string, previous: string | null): Promise<boolean> {
+    try {
+        if (previous === null) {
+            try {
+                await fs.unlink(filePath);
+            } catch (err: unknown) {
+                const code = (err as NodeJS.ErrnoException).code;
+                if (code !== 'ENOENT') {
+                    return false;
+                }
+            }
+            return true;
+        }
+        await fs.writeFile(filePath, previous, 'utf8');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 /**
  * Cursor profile files + settings object only.
  * Writes slim BuildRules IntelliSense csproj + .sln. Does NOT run restore or UI prompts —
  * those belong in the setup orchestrator so progress messages stay accurate.
  *
  * `dotnet.defaultSolution` is only merged after both csproj and sln write succeed.
- * On failure it is omitted (and cleared if previously set) so C# LS is not pointed at a missing .sln.
+ * On failure: restore each file to its pre-write snapshot only (null snapshot → delete).
+ * Never a second "delete both" pass — that can wipe still-good files after a pre-write
+ * error or a partial restore failure. Keep defaultSolution only when a complete prior
+ * pair is verified present after restore.
  */
 export async function applyCursorProfile(info: ProjectInfo): Promise<{
     settings: Record<string, any>;
@@ -488,32 +524,46 @@ export async function applyCursorProfile(info: ProjectInfo): Promise<{
 
     await writeClangdConfig(info.projectPath);
 
+    const csprojPath = buildRulesIntelliSenseCsproj(info.projectPath, info.projectName);
+    const slnPath = buildRulesIntelliSenseSln(info.projectPath, info.projectName);
+    const prevCsproj = await readFileSnapshot(csprojPath);
+    const prevSln = await readFileSnapshot(slnPath);
+
+    const slnRelative = buildRulesIntelliSenseSlnRelative(info.projectName);
     try {
-        const { rulesCount, csprojPath } = await writeBuildRulesIntelliSenseCsproj(info);
-        try {
-            await writeBuildRulesIntelliSenseSln(info);
-        } catch (slnErr: unknown) {
-            // Avoid orphan csproj without a sibling .sln (C# LS / defaultSolution half-state).
-            try {
-                await fs.unlink(csprojPath);
-            } catch {
-                // ignore — still report the sln failure
-            }
-            throw slnErr;
-        }
-        settings['dotnet.defaultSolution'] = buildRulesIntelliSenseSlnRelative(info.projectName);
+        const { rulesCount } = await writeBuildRulesIntelliSenseCsproj(info);
+        await writeBuildRulesIntelliSenseSln(info);
+        settings['dotnet.defaultSolution'] = slnRelative;
         notes.push(
             `Slim BuildRules IntelliSense csproj+sln written (${rulesCount} rules file(s); no UE5Rules). ` +
-                `dotnet.defaultSolution → ${buildRulesIntelliSenseSlnRelative(info.projectName)}`
+                `dotnet.defaultSolution → ${slnRelative}`
         );
     } catch (err: unknown) {
-        // undefined → mergeSettings + JSON.stringify omit/clear any prior defaultSolution
-        settings['dotnet.defaultSolution'] = undefined;
-        notes.push(
-            `Warning: Slim BuildRules IntelliSense csproj/sln failed — ` +
-                `dotnet.defaultSolution was not set (C# LS would point at a missing solution). ` +
-                `${(err as Error).message}`
-        );
+        const csOk = await restoreFileSnapshot(csprojPath, prevCsproj);
+        const slnOk = await restoreFileSnapshot(slnPath, prevSln);
+        const restoredPair =
+            prevCsproj !== null &&
+            prevSln !== null &&
+            csOk &&
+            slnOk &&
+            (await fileExists(csprojPath)) &&
+            (await fileExists(slnPath));
+
+        if (restoredPair) {
+            settings['dotnet.defaultSolution'] = slnRelative;
+            notes.push(
+                `Warning: Slim BuildRules IntelliSense update failed — restored previous csproj+sln. ` +
+                    `${(err as Error).message}`
+            );
+        } else {
+            // undefined → mergeSettings clears any prior defaultSolution
+            settings['dotnet.defaultSolution'] = undefined;
+            notes.push(
+                `Warning: Slim BuildRules IntelliSense csproj/sln failed — ` +
+                    `dotnet.defaultSolution was not set (C# LS would point at a missing solution). ` +
+                    `${(err as Error).message}`
+            );
+        }
     }
 
     const hasCc = await ensureCompileCommands(info.projectPath, info.projectName);

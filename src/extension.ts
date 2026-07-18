@@ -1,11 +1,18 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
-import { resolveHost } from './host';
-import { findProjectInfo } from './engine';
-import { excludeSettings, patchCodeWorkspace, patchVscodeSettings } from './excludes';
+import { resolveHost, HostKind } from './host';
+import { findProjectInfo, ProjectInfo } from './engine';
+import {
+    excludeSettings,
+    patchCodeWorkspace,
+    patchVscodeSettings,
+    resolveCodeWorkspaceFile,
+} from './excludes';
 import { ensureExtensions, rewriteWorkspaceRecommendations } from './extensions';
 import { applyCursorProfile, restoreBuildRulesIntelliSense } from './profiles/cursor';
 import { applyVsCodeProfile } from './profiles/vscode';
 import { initGitProject } from './git';
+import { fileExists, readJson } from './util';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('✅ UE VS Code / Cursor Helper is now active!');
@@ -14,6 +21,53 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('ue-vscode-helper.setup', setupUnrealProject),
         vscode.commands.registerCommand('ue-vscode-helper.initGit', initGitProject)
     );
+}
+
+/**
+ * Validate targets that Setup will patch BEFORE writing clangd / BuildRules /
+ * compile_commands. Prevents "Setup failed" after profile files already changed
+ * on disk (e.g. invalid `.code-workspace` JSON).
+ */
+async function preflightSetupTargets(info: ProjectInfo, host: HostKind): Promise<void> {
+    const workspaceFile = await resolveCodeWorkspaceFile(info.projectPath, info.projectName);
+    if (workspaceFile) {
+        try {
+            await readJson(workspaceFile);
+        } catch (err: unknown) {
+            throw new Error(
+                `Invalid JSON in ${path.basename(workspaceFile)} — fix or regenerate the workspace file before Setup. ${
+                    (err as Error).message
+                }`
+            );
+        }
+    }
+
+    const settingsFile = path.join(info.projectPath, '.vscode', 'settings.json');
+    if (await fileExists(settingsFile)) {
+        try {
+            await readJson(settingsFile);
+        } catch (err: unknown) {
+            throw new Error(
+                `Invalid JSON in .vscode/settings.json — fix it before Setup. ${(err as Error).message}`
+            );
+        }
+    }
+
+    if (host === 'vscode') {
+        const propsFile = path.join(info.projectPath, '.vscode', 'c_cpp_properties.json');
+        if (!(await fileExists(propsFile))) {
+            throw new Error('c_cpp_properties.json not found. Generate project files in UE first!');
+        }
+        try {
+            await readJson(propsFile);
+        } catch (err: unknown) {
+            throw new Error(
+                `Invalid JSON in c_cpp_properties.json — regenerate project files in UE. ${
+                    (err as Error).message
+                }`
+            );
+        }
+    }
 }
 
 async function setupUnrealProject() {
@@ -45,6 +99,9 @@ async function setupUnrealProject() {
         },
         async (progress) => {
             try {
+                progress.report({ message: 'Validating workspace targets...' });
+                await preflightSetupTargets(info, host);
+
                 progress.report({
                     message:
                         host === 'cursor'
@@ -62,13 +119,17 @@ async function setupUnrealProject() {
                 const shared = excludeSettings(info.enginePath);
                 const allSettings = { ...profileResult.settings, ...shared };
 
-                const { patched } = await patchCodeWorkspace(info.projectPath, allSettings);
+                const { patched } = await patchCodeWorkspace(
+                    info.projectPath,
+                    info.projectName,
+                    allSettings
+                );
                 if (!patched) {
                     notes.push('.code-workspace not found — patched .vscode/settings.json only.');
                 }
 
                 await patchVscodeSettings(info.projectPath, allSettings);
-                await rewriteWorkspaceRecommendations(info.projectPath, host);
+                await rewriteWorkspaceRecommendations(info.projectPath, info.projectName, host);
 
                 if (host === 'cursor') {
                     progress.report({

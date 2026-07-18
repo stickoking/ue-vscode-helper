@@ -2,7 +2,7 @@
 # Usage:
 #   .\scripts\install-and-test.ps1
 #   .\scripts\install-and-test.ps1 -AlsoVSCode
-#   .\scripts\install-and-test.ps1 -VsixPath .\ue-vscode-helper-1.1.3.vsix
+#   .\scripts\install-and-test.ps1 -VsixPath .\ue-vscode-helper-1.1.4.vsix
 
 param(
     [string]$VsixPath = "",
