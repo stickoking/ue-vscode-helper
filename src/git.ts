@@ -2,7 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { execFile } from 'child_process';
-import { findProjectInfo } from './engine';
+import {
+    findProjectInfo,
+    getRememberedUprojectPath,
+    rememberUprojectPath,
+} from './engine';
 import { fileExists } from './util';
 
 function runGit(args: string[], cwd: string): Promise<void> {
@@ -24,16 +28,21 @@ function isSafeGitRemoteUrl(url: string): boolean {
     );
 }
 
-export async function initGitProject(): Promise<void> {
-    // Same root as Setup: directory containing the .uproject (not folders[0]).
-    const info = await findProjectInfo();
-    if (!info) {
+export async function initGitProject(context: vscode.ExtensionContext): Promise<void> {
+    // Reuse Setup's remembered .uproject so Git init cannot target a different game.
+    const preferred = getRememberedUprojectPath(context);
+    const resolved = await findProjectInfo(undefined, preferred);
+    if (resolved.status === 'cancelled') {
+        return;
+    }
+    if (resolved.status === 'none') {
         const hasFolder = !!vscode.workspace.workspaceFolders?.[0];
         return void vscode.window.showErrorMessage(
             hasFolder ? 'No .uproject file found.' : 'Open your Unreal project first.'
         );
     }
 
+    const info = resolved.info;
     const projectPath = info.projectPath;
     const gitDir = path.join(projectPath, '.git');
 
@@ -58,6 +67,9 @@ export async function initGitProject(): Promise<void> {
     if (answer !== 'Yes') {
         return;
     }
+
+    // Persist only after the user confirms init — not on QuickPick-then-Cancel.
+    await rememberUprojectPath(context, info.uprojectPath);
 
     try {
         await runGit(['init'], projectPath);
@@ -89,6 +101,10 @@ compile_commands.json
 *.sln
 *.vcxproj
 *.vcxproj.filters
+
+# Cursor slim BuildRules IntelliSense (dotnet.defaultSolution) — must not stay ignored
+!.vscode/*.BuildRules.IntelliSense.sln
+!.vscode/*.BuildRules.IntelliSense.csproj
 
 # Xcode
 *.xcworkspace

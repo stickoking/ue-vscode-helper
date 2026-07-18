@@ -6,7 +6,9 @@ import {
     buildRulesIntelliSenseSln,
     buildRulesIntelliSenseSlnRelative,
     findProjectInfo,
+    getRememberedUprojectPath,
     ProjectInfo,
+    rememberUprojectPath,
     resolveUprojectPath,
 } from './engine';
 import {
@@ -31,15 +33,15 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('✅ UE VS Code / Cursor Helper is now active!');
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('ue-vscode-helper.setup', setupUnrealProject),
-        vscode.commands.registerCommand('ue-vscode-helper.initGit', initGitProject)
+        vscode.commands.registerCommand('ue-vscode-helper.setup', () => setupUnrealProject(context)),
+        vscode.commands.registerCommand('ue-vscode-helper.initGit', () => initGitProject(context))
     );
 }
 
 /**
  * Validate JSONC targets Setup will merge BEFORE any hard-path disk writes.
  */
-async function preflightSetupTargets(info: ProjectInfo, _host: HostKind): Promise<void> {
+async function preflightSetupTargets(info: ProjectInfo, host: HostKind): Promise<void> {
     const workspaceFile = await resolveCodeWorkspaceFile(info.projectPath, info.projectName);
     if (workspaceFile) {
         try {
@@ -61,6 +63,23 @@ async function preflightSetupTargets(info: ProjectInfo, _host: HostKind): Promis
             throw new Error(
                 `Invalid JSON in .vscode/settings.json — fix it before Setup. ${(err as Error).message}`
             );
+        }
+    }
+
+    // VS Code: if UE already generated c_cpp_properties, validate JSONC before hard writes.
+    // Missing file stays soft in the hard phase (host settings still apply).
+    if (host === 'vscode') {
+        const propsFile = path.join(info.projectPath, '.vscode', 'c_cpp_properties.json');
+        if (await fileExists(propsFile)) {
+            try {
+                await readJsonc(propsFile);
+            } catch (err: unknown) {
+                throw new Error(
+                    `Invalid JSON in c_cpp_properties.json — regenerate VS Code project files in Unreal, then re-run Setup. ${
+                        (err as Error).message
+                    }`
+                );
+            }
         }
     }
 }
@@ -118,15 +137,17 @@ async function runHardSetupPhase(
                 );
             } catch (err: unknown) {
                 // Soft-fail BuildRules: restore ONLY csproj/sln (settings not written yet).
-                // Do not gate priorPair on rolling back unrelated tracked files.
                 const brOk = await tx.rollbackOnly([csprojPath, slnPath]);
+                // Keep defaultSolution if the pair is still on disk — even when rollback
+                // reports incomplete (Bugbot: "BuildRules fail drops defaultSolution").
                 const priorPair =
-                    brOk && (await fileExists(csprojPath)) && (await fileExists(slnPath));
+                    (await fileExists(csprojPath)) && (await fileExists(slnPath));
                 if (priorPair) {
                     settings['dotnet.defaultSolution'] = slnRelative;
                     notes.push(
-                        `Warning: Slim BuildRules IntelliSense update failed — restored previous csproj+sln. ` +
-                            `${(err as Error).message}`
+                        `Warning: Slim BuildRules IntelliSense update failed — kept existing csproj+sln. ` +
+                            `${(err as Error).message}` +
+                            (brOk ? '' : ' (BuildRules rollback incomplete)')
                     );
                 } else {
                     settings['dotnet.defaultSolution'] = undefined;
@@ -181,12 +202,12 @@ async function runHardSetupPhase(
     }
 }
 
-async function setupUnrealProject() {
+async function setupUnrealProject(context: vscode.ExtensionContext) {
     if (!vscode.workspace.workspaceFolders?.length) {
         return vscode.window.showErrorMessage('Open your Unreal Engine project folder first.');
     }
 
-    const uproject = await resolveUprojectPath();
+    const uproject = await resolveUprojectPath(getRememberedUprojectPath(context));
     if (uproject.status === 'cancelled') {
         return;
     }
@@ -194,10 +215,16 @@ async function setupUnrealProject() {
         return vscode.window.showErrorMessage('No .uproject file found.');
     }
 
-    const info = await findProjectInfo(uproject.uprojectPath);
-    if (!info) {
+    await rememberUprojectPath(context, uproject.uprojectPath);
+
+    const resolved = await findProjectInfo(uproject.uprojectPath);
+    if (resolved.status === 'cancelled') {
+        return;
+    }
+    if (resolved.status !== 'found') {
         return vscode.window.showErrorMessage('No .uproject file found.');
     }
+    const info = resolved.info;
 
     const host = resolveHost();
     const hostLabel = host === 'cursor' ? 'Cursor' : 'VS Code';

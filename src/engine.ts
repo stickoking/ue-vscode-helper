@@ -12,19 +12,43 @@ export interface ProjectInfo {
     enginePath: string;
 }
 
+const LAST_UPROJECT_STATE_KEY = 'ue-vscode-helper.lastUprojectPath';
+
 /**
  * Resolve which `.uproject` to set up.
- * Never use findFiles(..., 1) — that picks an arbitrary match in multi-game repos.
- * Prefer: active-editor ancestry (deepest) → unique workspace-folder root → QuickPick.
+ * Never use findFiles(..., 1) or a silent maxResults cap.
+ * Prefer: remembered path (if still present) → sole match → active-editor ancestry → QuickPick.
+ * When multiple exist, never auto-pick a sole workspace-folder-root `.uproject` while nested
+ * games also exist — that was Bugbot "Auto-picks wrong uproject".
  */
 export type UprojectResolveResult =
     | { status: 'found'; uprojectPath: string }
     | { status: 'none' }
     | { status: 'cancelled' };
 
-export async function resolveUprojectPath(): Promise<UprojectResolveResult> {
-    // No maxResults cap — multi-game repos can exceed arbitrary limits.
-    // Exclude common UE junk so the search stays fast without truncating results.
+/** Distinct cancel vs none — never collapse both to undefined (Git init false "No .uproject"). */
+export type FindProjectResult =
+    | { status: 'found'; info: ProjectInfo }
+    | { status: 'none' }
+    | { status: 'cancelled' };
+
+export async function rememberUprojectPath(
+    context: vscode.ExtensionContext,
+    uprojectPath: string
+): Promise<void> {
+    await context.workspaceState.update(LAST_UPROJECT_STATE_KEY, uprojectPath);
+}
+
+export function getRememberedUprojectPath(
+    context: vscode.ExtensionContext
+): string | undefined {
+    const value = context.workspaceState.get<string>(LAST_UPROJECT_STATE_KEY);
+    return value && value.trim() ? value : undefined;
+}
+
+export async function resolveUprojectPath(
+    preferredPath?: string
+): Promise<UprojectResolveResult> {
     const uprojectFiles = await vscode.workspace.findFiles(
         '**/*.uproject',
         '**/{node_modules,Binaries,DerivedDataCache,Intermediate,Saved}/**'
@@ -37,8 +61,9 @@ export async function resolveUprojectPath(): Promise<UprojectResolveResult> {
     }
 
     const paths = uprojectFiles.map((u) => u.fsPath);
+    const byNorm = new Map(paths.map((p) => [path.normalize(p).toLowerCase(), p]));
 
-    // Active editor under a game root → deepest containing .uproject wins.
+    // 1) Active editor under a game root (deepest) — user is looking at that project.
     const activePath = vscode.window.activeTextEditor?.document.uri.fsPath;
     if (activePath) {
         const containing = paths
@@ -53,20 +78,17 @@ export async function resolveUprojectPath(): Promise<UprojectResolveResult> {
         }
     }
 
-    // Unique .uproject sitting directly in a workspace folder root.
-    const folderRoots = (vscode.workspace.workspaceFolders ?? []).map((f) =>
-        path.normalize(f.uri.fsPath)
-    );
-    const atFolderRoot = paths.filter((uprojectPath) =>
-        folderRoots.includes(path.normalize(path.dirname(uprojectPath)))
-    );
-    if (atFolderRoot.length === 1) {
-        return { status: 'found', uprojectPath: atFolderRoot[0] };
+    // 2) Remembered path from prior Setup/Git confirm — only when no editor hint.
+    if (preferredPath) {
+        const hit = byNorm.get(path.normalize(preferredPath).toLowerCase());
+        if (hit) {
+            return { status: 'found', uprojectPath: hit };
+        }
     }
 
-    const pickFrom = atFolderRoot.length > 1 ? atFolderRoot : paths;
+    // 3) QuickPick every discovered .uproject (never folder-root-only).
     const picked = await vscode.window.showQuickPick(
-        pickFrom.map((uprojectPath) => ({
+        paths.map((uprojectPath) => ({
             label: path.basename(uprojectPath, '.uproject'),
             description: path.dirname(uprojectPath),
             uprojectPath,
@@ -83,31 +105,37 @@ export async function resolveUprojectPath(): Promise<UprojectResolveResult> {
 }
 
 /**
- * @param uprojectPath Optional explicit `.uproject` (avoids a second QuickPick when
- * Setup already called `resolveUprojectPath`).
+ * @param uprojectPath Explicit path skips resolve (Setup already chose).
+ * @param preferredPath Remembered path when resolving (Git init after Setup).
  */
-export async function findProjectInfo(uprojectPath?: string): Promise<ProjectInfo | undefined> {
+export async function findProjectInfo(
+    uprojectPath?: string,
+    preferredPath?: string
+): Promise<FindProjectResult> {
     if (!vscode.workspace.workspaceFolders?.length) {
-        return undefined;
+        return { status: 'none' };
     }
 
     let resolvedPath = uprojectPath;
     if (!resolvedPath) {
-        const resolved = await resolveUprojectPath();
-        if (resolved.status !== 'found') {
-            return undefined;
+        const resolved = await resolveUprojectPath(preferredPath);
+        if (resolved.status === 'cancelled') {
+            return { status: 'cancelled' };
+        }
+        if (resolved.status === 'none') {
+            return { status: 'none' };
         }
         resolvedPath = resolved.uprojectPath;
     }
 
-    // Always the directory that contains the .uproject — never a parent workspace
-    // folder. Opening a monorepo parent with Games/MyGame/*.uproject must still
-    // patch Games/MyGame/.vscode, not the repo root.
     const projectPath = path.dirname(resolvedPath);
     const projectName = path.basename(resolvedPath, '.uproject');
     const enginePath = await resolveEnginePath(resolvedPath);
 
-    return { projectPath, projectName, uprojectPath: resolvedPath, enginePath };
+    return {
+        status: 'found',
+        info: { projectPath, projectName, uprojectPath: resolvedPath, enginePath },
+    };
 }
 
 /**

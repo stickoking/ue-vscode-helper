@@ -221,6 +221,15 @@ export function buildDefaultDefineConstants(enginePath: string): string {
     for (let minor = 0; minor <= ue5MaxMinor; minor++) {
         parts.push(`UE_5_${minor}_OR_LATER`);
     }
+    // UE 6+ installs: also emit UE_6_N_OR_LATER through the detected minor.
+    if (ver && ver.major >= 6) {
+        for (let major = 6; major <= ver.major; major++) {
+            const maxMinor = major === ver.major ? ver.minor : 30;
+            for (let minor = 0; minor <= maxMinor; minor++) {
+                parts.push(`UE_${major}_${minor}_OR_LATER`);
+            }
+        }
+    }
 
     return parts.join(';');
 }
