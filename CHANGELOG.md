@@ -7,6 +7,9 @@ All notable changes to the "ue-vscode-helper" extension will be documented in th
 ### Added
 - Cursor project rule (`.cursor/rules/ue-vscode-helper.mdc`, alwaysApply) and skill (`.cursor/skills/ue-helper/SKILL.md`) documenting dual-host architecture, clangd pitfalls, and slim BuildRules IntelliSense `.sln` / `defaultSolution` requirements so cold agents do not regress
 
+### Docs
+- Expanded skill + always-apply rule: official vs reality, Cursor/VS Code extension stacks, version lessons through 0.2.7, hard agent rules, and **planned** ensure-extensions design (extensions → configs → one Reload; host matrices; settings). Docs only — no ensure-extensions implementation yet.
+
 ### Confirmed
 - Setup already writes slim `.csproj` + `.sln`, sets `dotnet.defaultSolution` to the **`.sln`**, restores with timeout, and prompts Reload Window (0.2.6 behavior unchanged)
 

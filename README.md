@@ -60,6 +60,10 @@ Same VSIX works in VS Code via `code --install-extension ue-vscode-helper-0.2.7.
 | `ue-vscode-helper.preferHost` | `auto` | `auto` \| `cursor` \| `vscode` — force IntelliSense profile |
 | `ue-vscode-helper.restoreModuleRules` | `true` | Cursor: run UE `dotnet restore` on the **slim** BuildRules IntelliSense csproj (90s timeout, non-fatal) |
 
+## Agent / contributor notes
+
+Cold agents working on this repo: read **`.cursor/skills/ue-helper/SKILL.md`** (full knowledge base) and the always-apply rule **`.cursor/rules/ue-vscode-helper.mdc`**. Covers clangd Suppress pitfalls, slim BuildRules `.sln` / `defaultSolution`, host stacks, and the planned ensure-extensions feature.
+
 ## Requirements
 
 - Unreal Engine 5.4+ (Windows-focused)
@@ -80,6 +84,7 @@ Same VSIX works in VS Code via `code --install-extension ue-vscode-helper-0.2.7.
 ### 0.2.7
 
 - Cursor rule + skill documenting architecture and pitfalls (slim IntelliSense `.sln`, no project-wide clangd `Suppress "*"`, re-run Setup after UE regen)
+- Skill/rule expanded: host extension stacks, official-vs-reality, planned ensure-extensions design (docs only)
 
 ### 0.2.6
 
