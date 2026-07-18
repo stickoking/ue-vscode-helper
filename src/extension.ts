@@ -40,8 +40,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 /**
  * Validate JSONC targets Setup will merge BEFORE any hard-path disk writes.
+ * Intentionally does NOT preflight c_cpp_properties.json:
+ * - patchCppProperties uses strict readJson + soft-fail in the hard phase
+ * - hard-requiring props/compilerPath here previously aborted Setup before host
+ *   cleanup and bounced Bugbot (missing props vs Cursor leftovers vs JSONC mismatch)
  */
-async function preflightSetupTargets(info: ProjectInfo, host: HostKind): Promise<void> {
+async function preflightSetupTargets(info: ProjectInfo, _host: HostKind): Promise<void> {
     const workspaceFile = await resolveCodeWorkspaceFile(info.projectPath, info.projectName);
     if (workspaceFile) {
         try {
@@ -63,23 +67,6 @@ async function preflightSetupTargets(info: ProjectInfo, host: HostKind): Promise
             throw new Error(
                 `Invalid JSON in .vscode/settings.json — fix it before Setup. ${(err as Error).message}`
             );
-        }
-    }
-
-    // VS Code: if UE already generated c_cpp_properties, validate JSONC before hard writes.
-    // Missing file stays soft in the hard phase (host settings still apply).
-    if (host === 'vscode') {
-        const propsFile = path.join(info.projectPath, '.vscode', 'c_cpp_properties.json');
-        if (await fileExists(propsFile)) {
-            try {
-                await readJsonc(propsFile);
-            } catch (err: unknown) {
-                throw new Error(
-                    `Invalid JSON in c_cpp_properties.json — regenerate VS Code project files in Unreal, then re-run Setup. ${
-                        (err as Error).message
-                    }`
-                );
-            }
         }
     }
 }
