@@ -112,5 +112,25 @@ Cold agents working on this repo: read **`.cursor/skills/ue-helper/SKILL.md`** (
 
 ---
 
+## Publishing (maintainers)
+
+| Target | Used by | Registry |
+|--------|---------|----------|
+| **Visual Studio Marketplace** | VS Code | `marketplace.visualstudio.com` |
+| **Open VSX** | **Cursor** (and VSCodium) | `open-vsx.org` |
+
+There is no separate “Cursor Marketplace” upload API for third-party extensions — Cursor serves Open VSX through its proxy. Publish to **both**.
+
+GitHub Action: [`.github/workflows/publish.yml`](.github/workflows/publish.yml) — runs on `v*` tags or manual **workflow_dispatch**.
+
+Secrets to add in the repo:
+
+1. `VS_MARKETPLACE_TOKEN` — Azure DevOps PAT ([docs](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#get-a-personal-access-token))
+2. `OPEN_VSX_TOKEN` — from [open-vsx.org user tokens](https://open-vsx.org/user-settings/tokens); claim namespace **`stickoking`** first
+
+Release: bump is locked at **1.1.0** until you say otherwise; when ready, `git tag v1.1.0 && git push origin v1.1.0` (or run the workflow manually).
+
+---
+
 Made with ❤️ for the Unreal community.  
 Feedback / issues welcome on GitHub!
